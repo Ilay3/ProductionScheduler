@@ -1,0 +1,18 @@
+﻿<!-- File: MainWindow.xaml -->
+<Window x:Class="ProductionScheduler.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ProductionScheduler"
+        mc:Ignorable="d"
+        Title="Система Учета Времени" Height="450" Width="800" WindowStartupLocation="CenterScreen">
+    <Grid>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="Главное Окно Приложения" FontSize="20" Margin="20"/>
+            <Button x:Name="BtnOpenAdminPanel" Content="Открыть Панель Администратора" Width="250" Height="40" Margin="10" Click="BtnOpenAdminPanel_Click"/>
+            <Button x:Name="BtnOpenEmployeeForm" Content="Открыть Форму Сотрудника" Width="250" Height="40" Margin="10" Click="BtnOpenEmployeeForm_Click"/>
+
+        </StackPanel>
+    </Grid>
+</Window>

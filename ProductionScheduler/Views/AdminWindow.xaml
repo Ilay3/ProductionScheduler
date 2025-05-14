@@ -1,0 +1,193 @@
+﻿<Window x:Class="ProductionScheduler.Views.AdminWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewmodels="clr-namespace:ProductionScheduler.ViewModels"
+        xmlns:converters="clr-namespace:ProductionScheduler.Converters"
+        mc:Ignorable="d"
+        Title="Панель Администратора" Height="750" Width="1150" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToBooleanConverter x:Key="NullToBooleanConverter"/>
+    </Window.Resources>
+    <Window.DataContext>
+        <viewmodels:AdminViewModel/>
+    </Window.DataContext>
+    <Grid Margin="10">
+        <TabControl>
+            <!-- ВКЛАДКА: ДЕТАЛИ И МАРШРУТЫ -->
+            <TabItem Header="Детали и Маршруты">
+                <!-- ... (Разметка для Деталей остается такой же, как в предыдущем ответе) ... -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="350"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Text="Детали" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
+                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Наименование детали:"/>
+                                <TextBox Text="{Binding DetailNameToEdit, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5"/>
+                                <TextBlock Text="Код детали:"/>
+                                <TextBox Text="{Binding DetailCodeToEdit, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
+                            </StackPanel>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="Новая деталь" Command="{Binding AddNewDetailCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Сохранить деталь" Command="{Binding SaveDetailCommand}" Margin="0,0,5,0" Width="130"/>
+                            <Button Content="Отменить" Command="{Binding CancelEditDetailCommand}" Width="80"/>
+                        </WrapPanel>
+                        <TextBlock Text="Список деталей:" Margin="0,10,0,5"/>
+                        <ListBox ItemsSource="{Binding Details}" SelectedItem="{Binding SelectedDetail}" 
+                                 IsEnabled="{Binding IsEditingDetail, Converter={StaticResource InverseBooleanConverter}, FallbackValue=True}"
+                                 Height="320" DisplayMemberPath="Name" Margin="0,0,0,5"/>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Редактировать" Command="{Binding EditDetailCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Удалить" Command="{Binding DeleteDetailCommand}" Margin="0,0,5,0" Width="90"/>
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" IsEnabled="{Binding SelectedDetail, Converter={StaticResource NullToBooleanConverter}, FallbackValue=False}">
+                        <TextBlock Text="{Binding SelectedDetail.Name, FallbackValue='Деталь не выбрана', StringFormat='Этапы для: {0}'}" 
+                                   FontWeight="Bold" FontSize="16" Margin="0,0,0,10" FontStyle="Italic"/>
+                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="№ Опер:" VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding StageOpNumberToEdit, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="5"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Операция:" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding StageOpNameToEdit, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="3" Margin="5"/>
+                                <TextBlock Grid.Row="0" Grid.Column="4" Text="Норма (ч):" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding StageStdTimeToEdit, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="5" Margin="5"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Тип станка:" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding MachineTypes}" DisplayMemberPath="Name" 
+                                          SelectedValuePath="Id" 
+                                          SelectedItem="{Binding SelectedMachineTypeForStageEdit}"
+                                          Grid.Row="1" Grid.Column="1" Margin="5"/>
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="Порядок:" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding StageOrderInRouteToDisplay, Mode=OneWay}" Grid.Row="1" Grid.Column="3" Margin="5" IsReadOnly="True" Background="LightGray"/>
+                            </Grid>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="Новый этап" Command="{Binding AddNewRouteStageCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Сохранить этап" Command="{Binding SaveRouteStageCommand}" Margin="0,0,5,0" Width="130"/>
+                            <Button Content="Отменить" Command="{Binding CancelEditRouteStageCommand}" Width="80"/>
+                        </WrapPanel>
+                        <TextBlock Text="Список этапов для выбранной детали:" Margin="0,5,0,5"/>
+                        <DataGrid ItemsSource="{Binding RouteStagesVM}" SelectedItem="{Binding SelectedRouteStageVM}"
+                                  IsEnabled="{Binding IsEditingRouteStage, Converter={StaticResource InverseBooleanConverter}, FallbackValue=True}"
+                                  Height="250" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,5">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="№ Опер." Binding="{Binding OperationNumber}" Width="80"/>
+                                <DataGridTextColumn Header="Наименование операции" Binding="{Binding OperationName}" Width="*"/>
+                                <DataGridTextColumn Header="Тип станка" Binding="{Binding ApplicableMachineTypeName}" Width="150"/>
+                                <DataGridTextColumn Header="Норма (ч)" Binding="{Binding StandardTimePerUnit, StringFormat={}{0:N3}}" Width="100"/>
+                                <DataGridTextColumn Header="Порядок" Binding="{Binding OrderInRoute}" Width="80"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Редактировать этап" Command="{Binding EditRouteStageCommand}" Margin="0,0,5,0" Width="150"/>
+                            <Button Content="Удалить этап" Command="{Binding DeleteRouteStageCommand}" Width="120"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ВКЛАДКА: ТИПЫ СТАНКОВ -->
+            <TabItem Header="Типы станков">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="350"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Text="Управление Типами Станков" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
+                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Наименование типа станка:"/>
+                                <TextBox Text="{Binding MachineTypeNameToEdit, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5"/>
+                            </StackPanel>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="Новый тип" Command="{Binding AddNewMachineTypeCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Сохранить тип" Command="{Binding SaveMachineTypeCommand}" Margin="0,0,5,0" Width="130"/>
+                            <Button Content="Отменить" Command="{Binding CancelEditMachineTypeCommand}" Width="80"/>
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Список типов станков:" Margin="0,10,0,5"/>
+                        <DataGrid ItemsSource="{Binding MachineTypes}" SelectedItem="{Binding SelectedMachineType}"
+                                  IsEnabled="{Binding IsEditingMachineType, Converter={StaticResource InverseBooleanConverter}, FallbackValue=True}"
+                                  Height="400" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,5">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
+                                <DataGridTextColumn Header="Наименование типа" Binding="{Binding Name}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Редактировать" Command="{Binding EditMachineTypeCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Удалить" Command="{Binding DeleteMachineTypeCommand}" Margin="0,0,5,0" Width="90"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ВКЛАДКА: СТАНКИ -->
+            <TabItem Header="Станки">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="350"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Text="Управление Станками" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
+                        <Border BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Имя/Инв. номер станка:"/>
+                                <TextBox Text="{Binding MachineNameToEdit, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5"/>
+                                <TextBlock Text="Тип станка:"/>
+                                <ComboBox ItemsSource="{Binding MachineTypes}" DisplayMemberPath="Name"
+                                          SelectedValuePath="Id"
+                                          SelectedItem="{Binding SelectedMachineTypeForMachineEdit}" Margin="0,0,0,10"/>
+                            </StackPanel>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="Новый станок" Command="{Binding AddNewMachineCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Сохранить станок" Command="{Binding SaveMachineCommand}" Margin="0,0,5,0" Width="140"/>
+                            <Button Content="Отменить" Command="{Binding CancelEditMachineCommand}" Width="80"/>
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Список станков:" Margin="0,10,0,5"/>
+                        <DataGrid ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine}"
+                                  IsEnabled="{Binding IsEditingMachine, Converter={StaticResource InverseBooleanConverter}, FallbackValue=True}"
+                                  Height="400" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,5">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
+                                <DataGridTextColumn Header="Имя/Инв. номер" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="Тип" Binding="{Binding MachineType.Name}" Width="200"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Редактировать" Command="{Binding EditMachineCommand}" Margin="0,0,5,0" Width="110"/>
+                            <Button Content="Удалить" Command="{Binding DeleteMachineCommand}" Margin="0,0,5,0" Width="90"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

@@ -1,0 +1,58 @@
+﻿<Window x:Class="ProductionScheduler.Views.EmployeeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewmodels="clr-namespace:ProductionScheduler.ViewModels"
+        mc:Ignorable="d"
+        Title="Рабочая форма сотрудника" Height="600" Width="900" WindowStartupLocation="CenterScreen">
+    <Window.DataContext>
+        <viewmodels:EmployeeWorkViewModel/>
+    </Window.DataContext>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Для создания нового задания -->
+            <RowDefinition Height="Auto"/>
+            <!-- Разделитель или заголовок для списка -->
+            <RowDefinition Height="*"/>
+            <!-- Для списка заданий / Ганта -->
+        </Grid.RowDefinitions>
+
+        <!-- Секция создания нового задания -->
+        <Border Grid.Row="0" BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Новое задание:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="Деталь:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <ComboBox ItemsSource="{Binding AvailableDetails}" 
+                          SelectedItem="{Binding SelectedDetailForNewTask}"
+                          DisplayMemberPath="Name"
+                          Width="200" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Количество:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding NewTaskQuantity, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <Button Content="Создать задание" Command="{Binding CreateNewTaskCommand}" Width="120" VerticalAlignment="Center"/>
+                <Button Content="Обновить данные" Command="{Binding RefreshDataCommand}" Width="120" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="1" Text="Активные производственные задания:" FontWeight="Bold" Margin="0,10,0,5"/>
+
+        <!-- Список активных заданий (пока простой DataGrid, позже здесь будет Гант) -->
+        <DataGrid Grid.Row="2" ItemsSource="{Binding ActiveProductionTasks}" AutoGenerateColumns="False" IsReadOnly="True"
+                  CanUserAddRows="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
+                <DataGridTextColumn Header="Деталь" Binding="{Binding Detail.Name}" Width="*"/>
+                <DataGridTextColumn Header="Код детали" Binding="{Binding Detail.Code}" Width="120"/>
+                <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="70"/>
+                <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="100"/>
+                <DataGridTextColumn Header="Создано" Binding="{Binding CreationTime, StringFormat='dd.MM.yy HH:mm'}" Width="120"/>
+                <!-- TODO: Добавить столбцы для плановых/фактических дат, если нужно -->
+            </DataGrid.Columns>
+            <!-- TODO: Можно добавить DataGrid.RowDetailsTemplate для отображения этапов выбранного задания -->
+        </DataGrid>
+
+        <!-- Сюда позже будет добавлена диаграмма Ганта -->
+
+    </Grid>
+</Window>
