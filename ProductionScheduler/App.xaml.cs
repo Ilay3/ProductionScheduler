@@ -17,48 +17,46 @@ namespace ProductionScheduler
             {
                 // Путь к файлу базы данных
                 string dbPath = "productionscheduler.db";
+                bool isNewDatabase = !File.Exists(dbPath);
 
-                // УДАЛЯЕМ СТАРУЮ БАЗУ ПОЛНОСТЬЮ (если существует)
-                if (File.Exists(dbPath))
-                {
-                    File.Delete(dbPath);
-                    System.Threading.Thread.Sleep(100); // Даем время на удаление файла
-                }
-
-                System.Diagnostics.Debug.WriteLine("Database file deleted, creating new one...");
+                System.Diagnostics.Debug.WriteLine($"Database exists: {!isNewDatabase}");
 
                 // Инициализация базы данных
                 using (var dbContext = new ApplicationDbContext())
                 {
-                    // Простое создание базы данных без миграций
-                    bool created = dbContext.Database.EnsureCreated();
-                    System.Diagnostics.Debug.WriteLine($"Database created: {created}");
-
-                    // Проверяем подключение
-                    bool canConnect = dbContext.Database.CanConnect();
-                    System.Diagnostics.Debug.WriteLine($"Can connect: {canConnect}");
-
-                    if (!canConnect)
+                    if (isNewDatabase)
                     {
-                        throw new Exception("Cannot connect to database after creation");
+                        // Создаем новую базу данных только если её нет
+                        bool created = dbContext.Database.EnsureCreated();
+                        System.Diagnostics.Debug.WriteLine($"Database created: {created}");
+
+                        // Добавляем тестовые данные только в новую базу
+                        TestDataSeeder.SeedTestData(dbContext);
+                        System.Diagnostics.Debug.WriteLine("Test data seeded");
+
+                        MessageBox.Show("База данных создана и заполнена тестовыми данными!", "Первый запуск",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
                     }
+                    else
+                    {
+                        // Просто проверяем подключение к существующей базе
+                        bool canConnect = dbContext.Database.CanConnect();
+                        System.Diagnostics.Debug.WriteLine($"Can connect to existing database: {canConnect}");
 
-                    // Добавляем тестовые данные
-                    TestDataSeeder.SeedTestData(dbContext);
-                    System.Diagnostics.Debug.WriteLine("Test data seeded");
+                        if (!canConnect)
+                        {
+                            throw new Exception("Cannot connect to existing database");
+                        }
+
+                        System.Diagnostics.Debug.WriteLine("Using existing database");
+                    }
                 }
-
-                MessageBox.Show("База данных успешно создана и заполнена тестовыми данными!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Database initialization error: {ex}");
                 MessageBox.Show($"Ошибка инициализации базы данных: {ex.Message}\n\nДетали: {ex.InnerException?.Message}",
                     "Критическая ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-
-                // Не завершаем приложение, даем пользователю шанс
-                // this.Shutdown();
-                // return;
             }
         }
     }

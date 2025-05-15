@@ -1,4 +1,4 @@
-﻿// File: ViewModels/EmployeeWorkViewModel.cs (исправленная версия)
+﻿// File: ViewModels/EmployeeWorkViewModel.cs - Исправленная версия
 using ProductionScheduler.Data;
 using ProductionScheduler.Models;
 using ProductionScheduler.Services;
@@ -9,6 +9,8 @@ using System;
 using System.Windows;
 using System.Collections.Generic;
 using TaskStatus = ProductionScheduler.Models.TaskStatus;
+using Microsoft.EntityFrameworkCore;
+using System.IO;
 
 namespace ProductionScheduler.ViewModels
 {
@@ -16,6 +18,7 @@ namespace ProductionScheduler.ViewModels
     {
         private ApplicationDbContext _context;
         private ProductionPlanningService _planningService;
+        private MachineAlternativeService _machineAlternativeService;
 
         #region Properties for New Task Creation
         private ObservableCollection<Detail> _availableDetails;
@@ -50,6 +53,33 @@ namespace ProductionScheduler.ViewModels
                 {
                     UpdatePlannedTimes();
                     ((RelayCommand)CreateNewTaskCommand).RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        // Новые свойства для разделения задач
+        private int _maxTaskSize = 10;
+        public int MaxTaskSize
+        {
+            get => _maxTaskSize;
+            set
+            {
+                if (SetProperty(ref _maxTaskSize, value))
+                {
+                    UpdatePlannedTimes();
+                }
+            }
+        }
+
+        private bool _allowTaskSplitting = true;
+        public bool AllowTaskSplitting
+        {
+            get => _allowTaskSplitting;
+            set
+            {
+                if (SetProperty(ref _allowTaskSplitting, value))
+                {
+                    UpdatePlannedTimes();
                 }
             }
         }
@@ -108,6 +138,29 @@ namespace ProductionScheduler.ViewModels
             get => _planningWarnings;
             set => SetProperty(ref _planningWarnings, value);
         }
+
+        // Новое свойство для отображения количества создаваемых задач
+        private string _taskSplitInfo;
+        public string TaskSplitInfo
+        {
+            get => _taskSplitInfo;
+            set => SetProperty(ref _taskSplitInfo, value);
+        }
+
+        // Свойства для отображения конфликтов станков
+        private ObservableCollection<MachineConflictViewModel> _machineConflicts;
+        public ObservableCollection<MachineConflictViewModel> MachineConflicts
+        {
+            get => _machineConflicts;
+            set => SetProperty(ref _machineConflicts, value);
+        }
+
+        private bool _hasConflicts;
+        public bool HasConflicts
+        {
+            get => _hasConflicts;
+            set => SetProperty(ref _hasConflicts, value);
+        }
         #endregion
 
         #region Properties for Displaying Tasks and Stages
@@ -154,6 +207,8 @@ namespace ProductionScheduler.ViewModels
         public ICommand CompleteStageCommand { get; }
         public ICommand SuggestOptimalTimeCommand { get; }
         public ICommand SplitStageCommand { get; }
+        public ICommand ChangeTaskSizeCommand { get; }
+        public ICommand CheckMachineConflictsCommand { get; }
         #endregion
 
         public EmployeeWorkViewModel()
@@ -164,6 +219,7 @@ namespace ProductionScheduler.ViewModels
 
                 _context = new ApplicationDbContext();
                 _planningService = new ProductionPlanningService(_context);
+                _machineAlternativeService = new MachineAlternativeService(_context);
 
                 // Инициализируем команды
                 CreateNewTaskCommand = new RelayCommand(ExecuteCreateNewTask, CanExecuteCreateNewTask);
@@ -174,14 +230,17 @@ namespace ProductionScheduler.ViewModels
                 StartStageCommand = new RelayCommand<ProductionTaskStageViewModel>(ExecuteStartStage);
                 PauseStageCommand = new RelayCommand<ProductionTaskStageViewModel>(ExecutePauseStage);
                 CompleteStageCommand = new RelayCommand<ProductionTaskStageViewModel>(ExecuteCompleteStage);
-                SplitStageCommand = new RelayCommand<ProductionTaskStageViewModel>(ExecuteSplitStage);
                 SuggestOptimalTimeCommand = new RelayCommand(ExecuteSuggestOptimalTime);
+                SplitStageCommand = new RelayCommand<ProductionTaskStageViewModel>(ExecuteSplitStage);
+                ChangeTaskSizeCommand = new RelayCommand(UpdatePlannedTimes);
+                CheckMachineConflictsCommand = new RelayCommand(ExecuteCheckMachineConflicts);
 
                 // Инициализируем коллекции
                 AvailableDetails = new ObservableCollection<Detail>();
                 ActiveProductionTasks = new ObservableCollection<ProductionTask>();
                 RouteStagesForNewTask = new ObservableCollection<RouteStageWithMachine>();
                 SelectedTaskStages = new ObservableCollection<ProductionTaskStageViewModel>();
+                MachineConflicts = new ObservableCollection<MachineConflictViewModel>();
 
                 PlannedStartTime = DateTime.Now;
 
@@ -255,6 +314,7 @@ namespace ProductionScheduler.ViewModels
                 }
 
                 var routeStages = _context.RouteStages
+                    .Include(rs => rs.ApplicableMachineType)
                     .Where(rs => rs.DetailId == SelectedDetailForNewTask.Id)
                     .OrderBy(rs => rs.OrderInRoute)
                     .ToList();
@@ -264,6 +324,7 @@ namespace ProductionScheduler.ViewModels
                 foreach (var rs in routeStages)
                 {
                     var machines = _context.Machines
+                        .Include(m => m.MachineType)
                         .Where(m => m.MachineTypeId == rs.MachineTypeId)
                         .OrderBy(m => m.Name)
                         .ToList();
@@ -273,6 +334,12 @@ namespace ProductionScheduler.ViewModels
                         RouteStage = rs,
                         AvailableMachines = new ObservableCollection<Machine>(machines)
                     };
+
+                    // Автоматически выбираем первый доступный станок
+                    if (machines.Any())
+                    {
+                        routeStageWithMachine.SelectedMachine = GetBestMachine(machines, rs);
+                    }
 
                     // Подписываемся на изменение выбранного станка для пересчета времени
                     routeStageWithMachine.PropertyChanged += (s, e) =>
@@ -297,24 +364,35 @@ namespace ProductionScheduler.ViewModels
             }
         }
 
+        private Machine GetBestMachine(List<Machine> machines, RouteStage routeStage)
+        {
+            try
+            {
+                // Простая логика выбора лучшего станка
+                // TODO: Здесь можно добавить более сложную логику учета загруженности станков
+
+                // Возвращаем первый станок из списка
+                return machines.First();
+            }
+            catch
+            {
+                return machines.FirstOrDefault();
+            }
+        }
+
         private void LoadActiveProductionTasks()
         {
             try
             {
                 var tasks = _context.ProductionTasks
+                    .Include(pt => pt.Detail)
+                    .Include(pt => pt.TaskStages)
+                        .ThenInclude(pts => pts.RouteStage)
+                    .Include(pt => pt.TaskStages)
+                        .ThenInclude(pts => pts.AssignedMachine)
                     .Where(pt => pt.Status != TaskStatus.Completed && pt.Status != TaskStatus.Cancelled)
                     .OrderByDescending(pt => pt.CreationTime)
                     .ToList();
-
-                // Загружаем связанные данные
-                foreach (var task in tasks)
-                {
-                    task.Detail = _context.Details.FirstOrDefault(d => d.Id == task.DetailId);
-                    task.TaskStages = _context.ProductionTaskStages
-                        .Where(pts => pts.ProductionTaskId == task.Id)
-                        .OrderBy(pts => pts.OrderInTask)
-                        .ToList();
-                }
 
                 ActiveProductionTasks = new ObservableCollection<ProductionTask>(tasks);
                 System.Diagnostics.Debug.WriteLine($"Loaded {ActiveProductionTasks.Count} active tasks");
@@ -337,6 +415,8 @@ namespace ProductionScheduler.ViewModels
                 }
 
                 var stages = _context.ProductionTaskStages
+                    .Include(pts => pts.RouteStage)
+                    .Include(pts => pts.AssignedMachine)
                     .Where(pts => pts.ProductionTaskId == SelectedTask.Id)
                     .OrderBy(pts => pts.OrderInTask)
                     .ToList();
@@ -345,13 +425,6 @@ namespace ProductionScheduler.ViewModels
 
                 foreach (var stage in stages)
                 {
-                    // Загружаем связанные данные
-                    stage.RouteStage = _context.RouteStages.FirstOrDefault(rs => rs.Id == stage.RouteStageId);
-                    if (stage.MachineId.HasValue)
-                    {
-                        stage.AssignedMachine = _context.Machines.FirstOrDefault(m => m.Id == stage.MachineId.Value);
-                    }
-
                     stageViewModels.Add(new ProductionTaskStageViewModel(stage, this));
                 }
 
@@ -377,6 +450,7 @@ namespace ProductionScheduler.ViewModels
                     TotalPlannedTime = "";
                     PlannedEndTime = null;
                     PlanningWarnings = "";
+                    TaskSplitInfo = "";
                     return;
                 }
 
@@ -388,6 +462,11 @@ namespace ProductionScheduler.ViewModels
                     return;
                 }
 
+                // Рассчитываем разделение задач
+                var taskSizes = CalculateTaskSizes(NewTaskQuantity, AllowTaskSplitting ? MaxTaskSize : NewTaskQuantity);
+                TaskSplitInfo = taskSizes.Count > 1 ? $"Будет создано {taskSizes.Count} заданий: {string.Join(", ", taskSizes)} шт." : "";
+
+                // Используем планирование со сменами
                 if (UseAutomaticPlanning)
                 {
                     // Автоматическое планирование с учетом смен
@@ -395,10 +474,12 @@ namespace ProductionScheduler.ViewModels
                         .Select(rs => (rs.RouteStage, rs.SelectedMachine))
                         .ToList();
 
-                    var plan = _planningService.PlanTask(SelectedDetailForNewTask, NewTaskQuantity,
+                    // Планируем первое задание для примера
+                    var firstTaskSize = taskSizes.First();
+                    var plan = _planningService.PlanTask(SelectedDetailForNewTask, firstTaskSize,
                         PlannedStartTime ?? DateTime.Now, stageAssignments);
 
-                    // Обновляем информацию из плана
+                    // Обновляем информацию из плана для первого задания
                     for (int i = 0; i < RouteStagesForNewTask.Count; i++)
                     {
                         var stageWithMachine = RouteStagesForNewTask[i];
@@ -414,7 +495,19 @@ namespace ProductionScheduler.ViewModels
 
                     PlannedStartTime = plan.PlannedStartTime;
                     PlannedEndTime = plan.PlannedEndTime;
-                    TotalPlannedTime = $"{plan.TotalDuration:hh\\:mm\\:ss}";
+
+                    // Для множественных заданий приблизительно умножаем время
+                    var totalDuration = plan.TotalDuration;
+                    if (taskSizes.Count > 1)
+                    {
+                        // Приблизительный расчет времени для всех заданий
+                        var avgTaskSize = (double)NewTaskQuantity / taskSizes.Count;
+                        var timePerUnit = totalDuration.TotalMinutes / firstTaskSize;
+                        totalDuration = TimeSpan.FromMinutes(timePerUnit * NewTaskQuantity * 1.1); // +10% на переналадки
+                        PlannedEndTime = PlannedStartTime?.Add(totalDuration);
+                    }
+
+                    TotalPlannedTime = $"{totalDuration:hh\\:mm\\:ss}";
 
                     // Предупреждения о планировании
                     PlanningWarnings = "";
@@ -435,11 +528,16 @@ namespace ProductionScheduler.ViewModels
                     {
                         PlanningWarnings += "⚡ Некоторые операции будут разделены между сменами\n";
                     }
+
+                    if (taskSizes.Count > 1)
+                    {
+                        PlanningWarnings += $"📋 Задание будет разделено на {taskSizes.Count} частей\n";
+                    }
                 }
                 else
                 {
                     // Простой расчет без учета смен
-                    var totalHours = CalculateSimpleTotalTime();
+                    var totalHours = CalculateSimpleTotalTime() * taskSizes.Count;
                     TotalPlannedTime = $"{totalHours:F2} ч ({TimeSpan.FromHours(totalHours):hh\\:mm})";
                     PlannedEndTime = PlannedStartTime?.AddHours(totalHours);
                     PlanningWarnings = "Простой расчет без учета смен и обедов";
@@ -451,6 +549,27 @@ namespace ProductionScheduler.ViewModels
                 TotalPlannedTime = "Ошибка расчета";
                 PlanningWarnings = $"Ошибка: {ex.Message}";
             }
+        }
+
+        private List<int> CalculateTaskSizes(int totalQuantity, int maxTaskSize)
+        {
+            var sizes = new List<int>();
+
+            if (!AllowTaskSplitting || totalQuantity <= maxTaskSize)
+            {
+                sizes.Add(totalQuantity);
+                return sizes;
+            }
+
+            var remaining = totalQuantity;
+            while (remaining > 0)
+            {
+                var currentSize = Math.Min(remaining, maxTaskSize);
+                sizes.Add(currentSize);
+                remaining -= currentSize;
+            }
+
+            return sizes;
         }
 
         private double CalculateSimpleTotalTime()
@@ -490,6 +609,7 @@ namespace ProductionScheduler.ViewModels
             {
                 // Ищем последнюю завершенную операцию на этом станке
                 var lastTaskStage = _context.ProductionTaskStages
+                    .Include(pts => pts.ProductionTask)
                     .Where(pts => pts.MachineId == machine.Id && pts.ActualEndTime.HasValue)
                     .OrderByDescending(pts => pts.ActualEndTime)
                     .FirstOrDefault();
@@ -499,9 +619,8 @@ namespace ProductionScheduler.ViewModels
                     return 0; // Первая операция на станке - переналадка не нужна
                 }
 
-                // Загружаем информацию о задании последней операции
-                var lastTask = _context.ProductionTasks.FirstOrDefault(pt => pt.Id == lastTaskStage.ProductionTaskId);
-                if (lastTask == null || lastTask.DetailId == detail.Id)
+                // Проверяем, была ли последняя операция для той же детали
+                if (lastTaskStage.ProductionTask?.DetailId == detail.Id)
                 {
                     return 0; // Предыдущая операция была для той же детали
                 }
@@ -544,6 +663,59 @@ namespace ProductionScheduler.ViewModels
                 PlannedStartTime = suggestedStart;
                 UpdatePlannedTimes();
             }
+            catch(Exception ex)
+            {
+                MessageBox.Show($"Ошибка в методе ExecuteSuggestOptimalTime: {ex.Message}", "Ошибка");
+            }
+        }
+
+        private void ExecuteCheckMachineConflicts()
+        {
+            try
+            {
+                if (RouteStagesForNewTask == null || !RouteStagesForNewTask.Any())
+                {
+                    MessageBox.Show("Сначала выберите деталь и станки для этапов", "Информация");
+                    return;
+                }
+
+                // Анализируем конфликты
+                var conflictAnalysis = _machineAlternativeService.AnalyzeMachineConflicts(
+                    RouteStagesForNewTask.ToList(), PlannedStartTime ?? DateTime.Now);
+
+                HasConflicts = conflictAnalysis.HasConflicts;
+
+                if (conflictAnalysis.HasConflicts)
+                {
+                    // Преобразуем конфликты в ViewModel
+                    var conflictVMs = conflictAnalysis.Conflicts.Select(c => new MachineConflictViewModel
+                    {
+                        OperationName = c.RouteStage.OperationName,
+                        MachineName = c.Machine.Name,
+                        ConflictTime = c.ConflictTime,
+                        ConflictingTaskInfo = $"Задание #{c.ConflictingTask.ProductionTaskId} на деталь '{c.ConflictingTask.ProductionTask?.Detail?.Name}'",
+                        SuggestedWaitTime = c.SuggestedWaitTime,
+                        Alternatives = conflictAnalysis.Alternatives
+                            .Where(a => a.Machine.MachineTypeId == c.RouteStage.MachineTypeId)
+                            .ToList()
+                    }).ToList();
+
+                    MachineConflicts = new ObservableCollection<MachineConflictViewModel>(conflictVMs);
+
+                    MessageBox.Show($"Обнаружено {conflictAnalysis.Conflicts.Count} конфликтов станков. Проверьте вкладку 'Конфликты станков'",
+                        "Конфликты обнаружены", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else
+                {
+                    MachineConflicts = new ObservableCollection<MachineConflictViewModel>();
+                    MessageBox.Show("Конфликтов станков не обнаружено. Все выбранные станки доступны в запланированное время.",
+                        "Конфликтов нет", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                MessageBox.Show($"Ошибка проверки конфликтов: {ex.Message}", "Ошибка");
+            }
             catch (Exception ex)
             {
                 MessageBox.Show($"Ошибка предложения оптимального времени: {ex.Message}", "Ошибка");
@@ -574,150 +746,188 @@ namespace ProductionScheduler.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine("=== ExecuteCreateNewTask Start ===");
 
-                // Создаем задание с планированием
-                if (UseAutomaticPlanning)
+                // Рассчитываем размеры задач
+                var taskSizes = CalculateTaskSizes(NewTaskQuantity, AllowTaskSplitting ? MaxTaskSize : NewTaskQuantity);
+                var createdTasks = new List<ProductionTask>();
+
+                // Создаем задания с планированием
+                foreach (var taskSize in taskSizes)
                 {
-                    CreateTaskWithAutomaticPlanning();
+                    var taskNumber = taskSizes.IndexOf(taskSize) + 1;
+
+                    if (UseAutomaticPlanning)
+                    {
+                        var task = CreateTaskWithAutomaticPlanning(taskSize, taskNumber, taskSizes.Count);
+                        if (task != null) createdTasks.Add(task);
+                    }
+                    else
+                    {
+                        var task = CreateTaskWithSimplePlanning(taskSize, taskNumber, taskSizes.Count);
+                        if (task != null) createdTasks.Add(task);
+                    }
                 }
-                else
+
+                // Показываем результат
+                var message = $"Создано {createdTasks.Count} заданий на деталь '{SelectedDetailForNewTask.Name}':\n\n";
+                message += $"Общее количество: {NewTaskQuantity} шт.\n";
+                message += $"Задания: {string.Join(", ", taskSizes)} шт.\n";
+                message += $"Плановое время: {TotalPlannedTime}\n";
+                message += $"Начало: {PlannedStartTime:dd.MM.yy HH:mm}\n";
+                message += $"Окончание: {PlannedEndTime:dd.MM.yy HH:mm}\n\n";
+
+                if (!string.IsNullOrEmpty(PlanningWarnings))
                 {
-                    CreateTaskWithSimplePlanning();
+                    message += "Предупреждения:\n" + PlanningWarnings;
                 }
+
+                MessageBox.Show(message, "Задания созданы", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                LoadActiveProductionTasks();
+
+                // Сброс
+                ResetNewTaskForm();
 
                 System.Diagnostics.Debug.WriteLine("=== ExecuteCreateNewTask End ===");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ExecuteCreateNewTask Error: {ex.Message}");
-                MessageBox.Show($"Ошибка создания задания: {ex.Message}",
+                MessageBox.Show($"Ошибка создания заданий: {ex.Message}",
                     "Ошибка БД", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void CreateTaskWithAutomaticPlanning()
+        private ProductionTask CreateTaskWithAutomaticPlanning(int taskSize, int taskNumber, int totalTasks)
         {
-            // Получаем план от сервиса планирования
-            var stageAssignments = RouteStagesForNewTask
-                .Select(rs => (rs.RouteStage, rs.SelectedMachine))
-                .ToList();
-
-            var plan = _planningService.PlanTask(SelectedDetailForNewTask, NewTaskQuantity,
-                PlannedStartTime ?? DateTime.Now, stageAssignments);
-
-            // Создаем задание
-            var newTask = new ProductionTask
+            try
             {
-                DetailId = SelectedDetailForNewTask.Id,
-                Quantity = NewTaskQuantity,
-                CreationTime = DateTime.Now,
-                Status = TaskStatus.Planned,
-                Notes = UseAutomaticPlanning ? "Автоматическое планирование с учетом смен" : "",
-                PlannedStartTime = plan.PlannedStartTime,
-                PlannedEndTime = plan.PlannedEndTime
-            };
+                // Получаем план от сервиса планирования
+                var stageAssignments = RouteStagesForNewTask
+                    .Select(rs => (rs.RouteStage, rs.SelectedMachine))
+                    .ToList();
 
-            _context.ProductionTasks.Add(newTask);
-            _context.SaveChanges();
+                // Рассчитываем смещение времени для последующих заданий
+                var timeOffset = TimeSpan.FromMinutes((taskNumber - 1) * 30); // 30 минут между заданиями
+                var actualStartTime = (PlannedStartTime ?? DateTime.Now).Add(timeOffset);
 
-            // Создаем этапы задания на основе плана
-            for (int i = 0; i < plan.StagePlans.Count; i++)
-            {
-                var stagePlan = plan.StagePlans[i];
-                var stageWithMachine = RouteStagesForNewTask[i];
+                var plan = _planningService.PlanTask(SelectedDetailForNewTask, taskSize,
+                    actualStartTime, stageAssignments);
 
-                var taskStage = new ProductionTaskStage
+                // Создаем задание
+                var newTask = new ProductionTask
                 {
-                    ProductionTaskId = newTask.Id,
-                    RouteStageId = stagePlan.RouteStage.Id,
-                    MachineId = stagePlan.Machine.Id,
-                    QuantityToProcess = stagePlan.QuantityToProcess,
-                    OrderInTask = stagePlan.RouteStage.OrderInRoute,
+                    DetailId = SelectedDetailForNewTask.Id,
+                    Quantity = taskSize,
+                    CreationTime = DateTime.Now,
                     Status = TaskStatus.Planned,
-                    StandardTimePerUnitAtExecution = stagePlan.StandardTimePerUnitAtExecution,
-                    PlannedSetupTime = stagePlan.PlannedSetupTime,
-                    PlannedDuration = stagePlan.PlannedDuration,
-                    PlannedStartTime = stagePlan.PlannedStartTime,
-                    PlannedEndTime = stagePlan.PlannedEndTime
+                    Notes = totalTasks > 1 ? $"Задание {taskNumber} из {totalTasks}" : "Автоматическое планирование с учетом смен",
+                    PlannedStartTime = plan.PlannedStartTime,
+                    PlannedEndTime = plan.PlannedEndTime
                 };
 
-                _context.ProductionTaskStages.Add(taskStage);
+                _context.ProductionTasks.Add(newTask);
+                _context.SaveChanges();
+
+                // Создаем этапы задания на основе плана
+                for (int i = 0; i < plan.StagePlans.Count; i++)
+                {
+                    var stagePlan = plan.StagePlans[i];
+
+                    var taskStage = new ProductionTaskStage
+                    {
+                        ProductionTaskId = newTask.Id,
+                        RouteStageId = stagePlan.RouteStage.Id,
+                        MachineId = stagePlan.Machine.Id,
+                        QuantityToProcess = stagePlan.QuantityToProcess,
+                        OrderInTask = stagePlan.RouteStage.OrderInRoute,
+                        Status = TaskStatus.Planned,
+                        StandardTimePerUnitAtExecution = stagePlan.StandardTimePerUnitAtExecution,
+                        PlannedSetupTime = stagePlan.PlannedSetupTime,
+                        PlannedDuration = stagePlan.PlannedDuration,
+                        PlannedStartTime = stagePlan.PlannedStartTime,
+                        PlannedEndTime = stagePlan.PlannedEndTime
+                    };
+
+                    _context.ProductionTaskStages.Add(taskStage);
+                }
+
+                _context.SaveChanges();
+                return newTask;
             }
-
-            _context.SaveChanges();
-
-            ShowTaskCreationSuccess(plan);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CreateTaskWithAutomaticPlanning Error: {ex.Message}");
+                return null;
+            }
         }
 
-        private void CreateTaskWithSimplePlanning()
+        private ProductionTask CreateTaskWithSimplePlanning(int taskSize, int taskNumber, int totalTasks)
         {
-            var newTask = new ProductionTask
+            try
             {
-                DetailId = SelectedDetailForNewTask.Id,
-                Quantity = NewTaskQuantity,
-                CreationTime = DateTime.Now,
-                Status = TaskStatus.Planned,
-                Notes = "Простое планирование",
-                PlannedStartTime = PlannedStartTime,
-                PlannedEndTime = PlannedEndTime
-            };
+                // Рассчитываем смещение времени для последующих заданий
+                var previousTaskDuration = TimeSpan.FromHours(CalculateSimpleTotalTime());
+                var timeOffset = previousTaskDuration.Multiply(taskNumber - 1);
+                var actualStartTime = (PlannedStartTime ?? DateTime.Now).Add(timeOffset);
+                var actualEndTime = actualStartTime.Add(TimeSpan.FromHours(CalculateSimpleTotalTime()));
 
-            _context.ProductionTasks.Add(newTask);
-            _context.SaveChanges();
-
-            // Создаем этапы задания
-            var currentPlannedTime = PlannedStartTime ?? DateTime.Now;
-
-            foreach (var stageWithMachine in RouteStagesForNewTask)
-            {
-                var routeStage = stageWithMachine.RouteStage;
-                var selectedMachine = stageWithMachine.SelectedMachine;
-
-                double setupTime = CalculateSetupTime(selectedMachine, SelectedDetailForNewTask);
-                double stageHours = (routeStage.StandardTimePerUnit * NewTaskQuantity) + setupTime;
-                var stageDuration = TimeSpan.FromHours(stageHours);
-
-                var taskStage = new ProductionTaskStage
+                var newTask = new ProductionTask
                 {
-                    ProductionTaskId = newTask.Id,
-                    RouteStageId = routeStage.Id,
-                    MachineId = selectedMachine.Id,
-                    QuantityToProcess = NewTaskQuantity,
-                    OrderInTask = routeStage.OrderInRoute,
+                    DetailId = SelectedDetailForNewTask.Id,
+                    Quantity = taskSize,
+                    CreationTime = DateTime.Now,
                     Status = TaskStatus.Planned,
-                    StandardTimePerUnitAtExecution = routeStage.StandardTimePerUnit,
-                    PlannedSetupTime = setupTime,
-                    PlannedDuration = stageDuration,
-                    PlannedStartTime = currentPlannedTime,
-                    PlannedEndTime = currentPlannedTime.AddHours(stageHours)
+                    Notes = totalTasks > 1 ? $"Задание {taskNumber} из {totalTasks}" : "Простое планирование",
+                    PlannedStartTime = actualStartTime,
+                    PlannedEndTime = actualEndTime
                 };
 
-                _context.ProductionTaskStages.Add(taskStage);
-                currentPlannedTime = taskStage.PlannedEndTime.Value;
+                _context.ProductionTasks.Add(newTask);
+                _context.SaveChanges();
+
+                // Создаем этапы задания
+                var currentPlannedTime = actualStartTime;
+
+                foreach (var stageWithMachine in RouteStagesForNewTask)
+                {
+                    var routeStage = stageWithMachine.RouteStage;
+                    var selectedMachine = stageWithMachine.SelectedMachine;
+
+                    double setupTime = CalculateSetupTime(selectedMachine, SelectedDetailForNewTask);
+                    double stageHours = (routeStage.StandardTimePerUnit * taskSize) + setupTime;
+                    var stageDuration = TimeSpan.FromHours(stageHours);
+
+                    var taskStage = new ProductionTaskStage
+                    {
+                        ProductionTaskId = newTask.Id,
+                        RouteStageId = routeStage.Id,
+                        MachineId = selectedMachine.Id,
+                        QuantityToProcess = taskSize,
+                        OrderInTask = routeStage.OrderInRoute,
+                        Status = TaskStatus.Planned,
+                        StandardTimePerUnitAtExecution = routeStage.StandardTimePerUnit,
+                        PlannedSetupTime = setupTime,
+                        PlannedDuration = stageDuration,
+                        PlannedStartTime = currentPlannedTime,
+                        PlannedEndTime = currentPlannedTime.AddHours(stageHours)
+                    };
+
+                    _context.ProductionTaskStages.Add(taskStage);
+                    currentPlannedTime = taskStage.PlannedEndTime.Value;
+                }
+
+                _context.SaveChanges();
+                return newTask;
             }
-
-            _context.SaveChanges();
-
-            MessageBox.Show($"Задание на деталь '{SelectedDetailForNewTask.Name}' ({NewTaskQuantity} шт.) создано.\nПлановое время: {TotalPlannedTime}",
-                "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CreateTaskWithSimplePlanning Error: {ex.Message}");
+                return null;
+            }
         }
 
-        private void ShowTaskCreationSuccess(ProductionTaskPlan plan)
+        private void ResetNewTaskForm()
         {
-            string message = $"Задание на деталь '{SelectedDetailForNewTask.Name}' ({NewTaskQuantity} шт.) создано.\n\n";
-            message += $"Плановое время: {plan.TotalDuration:hh\\:mm\\:ss}\n";
-            message += $"Начало: {plan.PlannedStartTime:dd.MM.yy HH:mm}\n";
-            message += $"Окончание: {plan.PlannedEndTime:dd.MM.yy HH:mm}\n\n";
-
-            if (!string.IsNullOrEmpty(PlanningWarnings))
-            {
-                message += "Предупреждения:\n" + PlanningWarnings;
-            }
-
-            MessageBox.Show(message, "Задание создано", MessageBoxButton.OK, MessageBoxImage.Information);
-
-            LoadActiveProductionTasks();
-
-            // Сброс
             SelectedDetailForNewTask = null;
             RouteStagesForNewTask = new ObservableCollection<RouteStageWithMachine>();
             NewTaskQuantity = 1;
@@ -725,6 +935,7 @@ namespace ProductionScheduler.ViewModels
             PlannedStartTime = DateTime.Now;
             PlannedEndTime = null;
             PlanningWarnings = "";
+            TaskSplitInfo = "";
         }
 
         private void ExecuteStartTask()
@@ -848,12 +1059,10 @@ namespace ProductionScheduler.ViewModels
             {
                 // Загружаем связанные данные
                 var stage = _context.ProductionTaskStages
-                    .Where(pts => pts.Id == stageVM.TaskStage.Id)
-                    .FirstOrDefault();
+                    .Include(pts => pts.RouteStage)
+                    .FirstOrDefault(pts => pts.Id == stageVM.TaskStage.Id);
 
                 if (stage == null) return;
-
-                stage.RouteStage = _context.RouteStages.FirstOrDefault(rs => rs.Id == stage.RouteStageId);
 
                 var splitVM = new SplitOperationViewModel(stage, _context);
                 var splitWindow = new Views.SplitOperationWindow(splitVM);
@@ -882,7 +1091,7 @@ namespace ProductionScheduler.ViewModels
         }
     }
 
-    // Вспомогательные классы остаются прежними...
+    // Оставляем существующие вспомогательные классы
     public class RouteStageWithMachine : ViewModelBase
     {
         public RouteStage RouteStage { get; set; }
@@ -944,5 +1153,21 @@ namespace ProductionScheduler.ViewModels
         public ICommand PauseCommand { get; }
         public ICommand CompleteCommand { get; }
         public ICommand SplitCommand { get; }
+    }
+
+    // Класс для отображения конфликтов станков
+    public class MachineConflictViewModel : ViewModelBase
+    {
+        public string OperationName { get; set; }
+        public string MachineName { get; set; }
+        public DateTime ConflictTime { get; set; }
+        public string ConflictingTaskInfo { get; set; }
+        public TimeSpan SuggestedWaitTime { get; set; }
+        public List<MachineAlternative> Alternatives { get; set; } = new List<MachineAlternative>();
+
+        public string ConflictTimeFormatted => ConflictTime.ToString("dd.MM.yy HH:mm");
+        public string SuggestedWaitTimeFormatted => $"{SuggestedWaitTime.TotalMinutes:F0} мин";
+        public string AlternativesCount => $"{Alternatives.Count(a => a.IsAvailable)} доступно";
+        public string BestAlternative => Alternatives.FirstOrDefault(a => a.IsAvailable)?.Machine?.Name ?? "Нет доступных";
     }
 }

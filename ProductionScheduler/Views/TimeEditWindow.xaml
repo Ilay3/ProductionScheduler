@@ -1,0 +1,179 @@
+﻿<!-- File: Views/TimeEditWindow.xaml -->
+<Window x:Class="ProductionScheduler.Views.TimeEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:converters="clr-namespace:ProductionScheduler.Converters"
+        Title="Редактирование времени" Height="600" Width="500" 
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Window.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </Window.Resources>
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок -->
+        <TextBlock Grid.Row="0" Text="{Binding ItemName}" 
+                   FontSize="16" FontWeight="Bold" Margin="0,0,0,15" TextWrapping="Wrap"/>
+
+        <!-- Информация о станке -->
+        <Border Grid.Row="1" BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,15"
+                Visibility="{Binding MachineName, Converter={StaticResource NullToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Станок:" FontWeight="Bold" Margin="0,0,10,0"/>
+                <TextBlock Text="{Binding MachineName}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Редактирование времени -->
+        <TabControl Grid.Row="2" Margin="0,0,0,15">
+            <!-- Плановое время -->
+            <TabItem Header="📅 Плановое время">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Начало:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <DatePicker Grid.Row="0" Grid.Column="1" SelectedDate="{Binding PlannedStartTime}" Margin="0,0,5,10"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Время начала:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBox Text="{Binding PlannedStartTime, StringFormat='HH:mm'}" Width="60" Margin="0,0,5,0"/>
+                        <TextBlock Text="(ЧЧ:ММ)" VerticalAlignment="Center" FontStyle="Italic"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Окончание:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <DatePicker Grid.Row="2" Grid.Column="1" SelectedDate="{Binding PlannedEndTime}" Margin="0,0,5,10"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Время окончания:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBox Text="{Binding PlannedEndTime, StringFormat='HH:mm'}" Width="60" Margin="0,0,5,0"/>
+                        <TextBlock Text="(ЧЧ:ММ)" VerticalAlignment="Center" FontStyle="Italic"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Длительность:" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding PlannedDuration, StringFormat='{}{0:hh\\:mm\\:ss}'}" 
+                               VerticalAlignment="Center" FontWeight="Bold" Foreground="Blue"/>
+                    <Button Grid.Row="4" Grid.Column="2" Content="📊 Пересчитать" Command="{Binding CalculateDurationCommand}" Width="100"/>
+                </Grid>
+            </TabItem>
+
+            <!-- Фактическое время -->
+            <TabItem Header="⏰ Фактическое время">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Факт. начало:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <DatePicker Grid.Row="0" Grid.Column="1" SelectedDate="{Binding ActualStartTime}" Margin="0,0,5,10"/>
+                    <Button Grid.Row="0" Grid.Column="2" Content="⏰ Сейчас" Command="{Binding SetCurrentTimeStartCommand}" Width="80"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Время начала:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBox Text="{Binding ActualStartTime, StringFormat='HH:mm'}" Width="60" Margin="0,0,5,0"/>
+                        <TextBlock Text="(ЧЧ:ММ)" VerticalAlignment="Center" FontStyle="Italic"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Факт. окончание:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <DatePicker Grid.Row="2" Grid.Column="1" SelectedDate="{Binding ActualEndTime}" Margin="0,0,5,10"/>
+                    <Button Grid.Row="2" Grid.Column="2" Content="⏰ Сейчас" Command="{Binding SetCurrentTimeEndCommand}" Width="80"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Время окончания:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBox Text="{Binding ActualEndTime, StringFormat='HH:mm'}" Width="60" Margin="0,0,5,0"/>
+                        <TextBlock Text="(ЧЧ:ММ)" VerticalAlignment="Center" FontStyle="Italic"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Факт. длительность:" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ActualDuration, StringFormat='{}{0:hh\\:mm\\:ss}'}" 
+                               VerticalAlignment="Center" FontWeight="Bold" Foreground="Green"/>
+                    <Button Grid.Row="4" Grid.Column="2" Content="📊 Пересчитать" Command="{Binding CalculateDurationCommand}" Width="100"/>
+
+                    <!-- Сравнение -->
+                    <Border Grid.Row="5" Grid.ColumnSpan="3" Background="LightYellow" Padding="10" Margin="0,10,0,0"
+                            Visibility="{Binding ActualDuration, Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="📈 Сравнение план/факт:" FontWeight="Bold" Margin="0,0,0,5"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="План:" Margin="0,0,10,0"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PlannedDuration, StringFormat='{}{0:hh\\:mm\\:ss}'}"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Факт:" Margin="0,0,10,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ActualDuration, StringFormat='{}{0:hh\\:mm\\:ss}'}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Отклонение:" Margin="0,0,10,0" FontWeight="Bold"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActualDuration}" Value="{x:Null}">
+                                                    <Setter Property="Text" Value="--"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- Примечания -->
+            <TabItem Header="📝 Примечания" Visibility="{Binding IsTaskEdit, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Примечания:" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <TextBox Grid.Row="1" Text="{Binding Notes}" TextWrapping="Wrap" AcceptsReturn="True" 
+                             VerticalScrollBarVisibility="Auto"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Кнопки -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="💾 Сохранить" Command="{Binding SaveCommand}" Width="100" Height="35" 
+                    Margin="0,0,10,0" FontWeight="Bold"/>
+            <Button Content="❌ Отмена" Command="{Binding CancelCommand}" Width="100" Height="35"/>
+        </StackPanel>
+    </Grid>
+</Window>

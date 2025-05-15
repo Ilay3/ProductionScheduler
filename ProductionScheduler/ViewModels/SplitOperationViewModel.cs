@@ -1,4 +1,4 @@
-﻿// File: ViewModels/SplitOperationViewModel.cs
+﻿// File: ViewModels/SplitOperationViewModel.cs - Исправленная версия
 using ProductionScheduler.Data;
 using ProductionScheduler.Models;
 using System.Collections.ObjectModel;
@@ -6,6 +6,8 @@ using System.Linq;
 using System.Windows.Input;
 using System.Windows;
 using System;
+using Microsoft.EntityFrameworkCore;
+using TaskStatus = ProductionScheduler.Models.TaskStatus;
 
 namespace ProductionScheduler.ViewModels
 {
@@ -75,6 +77,13 @@ namespace ProductionScheduler.ViewModels
             get => _isPartsMode;
             set => SetProperty(ref _isPartsMode, value);
         }
+
+        private bool _createSeparateTasks = true;
+        public bool CreateSeparateTasks
+        {
+            get => _createSeparateTasks;
+            set => SetProperty(ref _createSeparateTasks, value);
+        }
         #endregion
 
         #region Commands
@@ -105,13 +114,32 @@ namespace ProductionScheduler.ViewModels
 
         private void LoadAvailableMachines()
         {
-            var machineTypeId = _originalStage.RouteStage.MachineTypeId;
-            var machines = _context.Machines
-                .Where(m => m.MachineTypeId == machineTypeId)
-                .OrderBy(m => m.Name)
-                .ToList();
+            try
+            {
+                var routeStage = _context.RouteStages
+                    .Include(rs => rs.ApplicableMachineType)
+                    .FirstOrDefault(rs => rs.Id == _originalStage.RouteStageId);
 
-            AvailableMachines = new ObservableCollection<Machine>(machines);
+                if (routeStage != null)
+                {
+                    var machines = _context.Machines
+                        .Include(m => m.MachineType)
+                        .Where(m => m.MachineTypeId == routeStage.MachineTypeId)
+                        .OrderBy(m => m.Name)
+                        .ToList();
+
+                    AvailableMachines = new ObservableCollection<Machine>(machines);
+                }
+                else
+                {
+                    AvailableMachines = new ObservableCollection<Machine>();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка загрузки станков: {ex.Message}", "Ошибка");
+                AvailableMachines = new ObservableCollection<Machine>();
+            }
         }
 
         private void UpdateSplitParts()
@@ -125,12 +153,30 @@ namespace ProductionScheduler.ViewModels
             for (int i = 0; i < NumberOfParts; i++)
             {
                 int quantity = quantityPerPart + (i < remainder ? 1 : 0);
-                parts.Add(new SplitPart
+                var part = new SplitPart
                 {
                     PartNumber = i + 1,
                     Quantity = quantity,
                     AvailableMachines = AvailableMachines
-                });
+                };
+
+                // Автоматически выбираем станок
+                if (AvailableMachines.Any())
+                {
+                    // Для первой части выбираем оригинальный станок, если возможно
+                    if (i == 0 && _originalStage.MachineId.HasValue)
+                    {
+                        part.SelectedMachine = AvailableMachines.FirstOrDefault(m => m.Id == _originalStage.MachineId.Value);
+                    }
+
+                    // Если станок не выбран, выбираем первый доступный
+                    if (part.SelectedMachine == null)
+                    {
+                        part.SelectedMachine = AvailableMachines.First();
+                    }
+                }
+
+                parts.Add(part);
             }
 
             SplitParts = parts;
@@ -152,39 +198,138 @@ namespace ProductionScheduler.ViewModels
         {
             try
             {
-                // Обновляем оригинальный этап
-                var firstPart = SplitParts.First();
-                _originalStage.QuantityToProcess = firstPart.Quantity;
-                _originalStage.MachineId = firstPart.SelectedMachine.Id;
-
-                // Создаем дочерние этапы
-                foreach (var part in SplitParts.Skip(1))
+                if (CreateSeparateTasks)
                 {
-                    var subStage = new ProductionTaskStage
-                    {
-                        ProductionTaskId = _originalStage.ProductionTaskId,
-                        RouteStageId = _originalStage.RouteStageId,
-                        MachineId = part.SelectedMachine.Id,
-                        QuantityToProcess = part.Quantity,
-                        OrderInTask = _originalStage.OrderInTask,
-                        Status = _originalStage.Status,
-                        StandardTimePerUnitAtExecution = _originalStage.StandardTimePerUnitAtExecution,
-                        PlannedSetupTime = 0, // Нет переналадки для той же детали
-                        PlannedDuration = TimeSpan.FromHours(_originalStage.StandardTimePerUnitAtExecution * part.Quantity),
-                        ParentProductionTaskStageId = _originalStage.Id
-                    };
-
-                    _context.ProductionTaskStages.Add(subStage);
+                    // Создаем отдельные задания (новая функция)
+                    CreateSeparateTasksMethod();
+                }
+                else
+                {
+                    // Старая логика - разделяем в рамках одного задания
+                    SplitWithinSameTask();
                 }
 
-                _context.SaveChanges();
                 RequestClose?.Invoke(true);
-                MessageBox.Show($"Операция разделена на {SplitParts.Count} частей", "Успех");
+                MessageBox.Show($"Операция успешно разделена", "Успех");
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Ошибка разделения: {ex.Message}", "Ошибка");
             }
+        }
+
+        private void CreateSeparateTasksMethod()
+        {
+            // Загружаем исходное задание
+            var originalTask = _context.ProductionTasks
+                .Include(pt => pt.Detail)
+                .Include(pt => pt.TaskStages)
+                .ThenInclude(pts => pts.RouteStage)
+                .FirstOrDefault(pt => pt.Id == _originalStage.ProductionTaskId);
+
+            if (originalTask == null)
+            {
+                throw new Exception("Исходное задание не найдено");
+            }
+
+            // Удаляем оригинальное задание
+            _context.ProductionTasks.Remove(originalTask);
+            _context.SaveChanges();
+
+            // Создаем новые задания для каждой части
+            foreach (var part in SplitParts)
+            {
+                // Создаем новое задание
+                var newTask = new ProductionTask
+                {
+                    DetailId = originalTask.DetailId,
+                    Quantity = part.Quantity,
+                    CreationTime = DateTime.Now,
+                    Status = TaskStatus.Planned,
+                    PlannedStartTime = originalTask.PlannedStartTime,
+                    PlannedEndTime = originalTask.PlannedEndTime,
+                    Notes = $"Разделено из задания #{originalTask.Id} (часть {part.PartNumber})"
+                };
+
+                _context.ProductionTasks.Add(newTask);
+                _context.SaveChanges(); // Сохраняем, чтобы получить ID
+
+                // Создаем этапы для нового задания
+                var sortedStages = originalTask.TaskStages.OrderBy(pts => pts.OrderInTask).ToList();
+
+                foreach (var originalTaskStage in sortedStages)
+                {
+                    var newTaskStage = new ProductionTaskStage
+                    {
+                        ProductionTaskId = newTask.Id,
+                        RouteStageId = originalTaskStage.RouteStageId,
+                        QuantityToProcess = part.Quantity,
+                        OrderInTask = originalTaskStage.OrderInTask,
+                        Status = TaskStatus.Planned,
+                        StandardTimePerUnitAtExecution = originalTaskStage.StandardTimePerUnitAtExecution,
+                        PlannedSetupTime = originalTaskStage.PlannedSetupTime,
+                        PlannedStartTime = originalTaskStage.PlannedStartTime,
+                        PlannedEndTime = originalTaskStage.PlannedEndTime
+                    };
+
+                    // Если это разделяемый этап, используем выбранный станок
+                    if (originalTaskStage.Id == _originalStage.Id)
+                    {
+                        newTaskStage.MachineId = part.SelectedMachine.Id;
+                        // Пересчитываем длительность для нового количества
+                        var durationPerUnit = originalTaskStage.PlannedDuration.TotalHours / originalTask.Quantity;
+                        newTaskStage.PlannedDuration = TimeSpan.FromHours(durationPerUnit * part.Quantity);
+                    }
+                    else
+                    {
+                        // Для других этапов сохраняем оригинальный станок
+                        newTaskStage.MachineId = originalTaskStage.MachineId;
+                        // Пересчитываем длительность пропорционально количеству
+                        var durationPerUnit = originalTaskStage.PlannedDuration.TotalHours / originalTask.Quantity;
+                        newTaskStage.PlannedDuration = TimeSpan.FromHours(durationPerUnit * part.Quantity);
+                    }
+
+                    _context.ProductionTaskStages.Add(newTaskStage);
+                }
+            }
+
+            _context.SaveChanges();
+        }
+
+        private void SplitWithinSameTask()
+        {
+            // Обновляем оригинальный этап (первая часть)
+            var firstPart = SplitParts.First();
+            _originalStage.QuantityToProcess = firstPart.Quantity;
+            _originalStage.MachineId = firstPart.SelectedMachine.Id;
+
+            // Пересчитываем длительность для первой части
+            var originalDurationPerUnit = _originalStage.PlannedDuration.TotalHours / TotalQuantity;
+            _originalStage.PlannedDuration = TimeSpan.FromHours(originalDurationPerUnit * firstPart.Quantity);
+
+            // Создаем дочерние этапы для остальных частей
+            foreach (var part in SplitParts.Skip(1))
+            {
+                var subStage = new ProductionTaskStage
+                {
+                    ProductionTaskId = _originalStage.ProductionTaskId,
+                    RouteStageId = _originalStage.RouteStageId,
+                    MachineId = part.SelectedMachine.Id,
+                    QuantityToProcess = part.Quantity,
+                    OrderInTask = _originalStage.OrderInTask,
+                    Status = _originalStage.Status,
+                    StandardTimePerUnitAtExecution = _originalStage.StandardTimePerUnitAtExecution,
+                    PlannedSetupTime = 0, // Нет переналадки для той же детали
+                    PlannedDuration = TimeSpan.FromHours(originalDurationPerUnit * part.Quantity),
+                    PlannedStartTime = _originalStage.PlannedStartTime,
+                    PlannedEndTime = _originalStage.PlannedStartTime?.Add(TimeSpan.FromHours(originalDurationPerUnit * part.Quantity)),
+                    ParentProductionTaskStageId = _originalStage.Id
+                };
+
+                _context.ProductionTaskStages.Add(subStage);
+            }
+
+            _context.SaveChanges();
         }
 
         private void ExecuteCancel()
