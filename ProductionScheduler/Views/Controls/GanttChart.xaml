@@ -64,7 +64,7 @@
 
         <!-- Заголовок колонки заданий -->
         <Border Grid.Row="0" Grid.Column="0" Background="#F5F5F5" BorderBrush="#DDD" BorderThickness="0,0,1,1">
-            <TextBlock Text="Производственные задания" Style="{StaticResource TaskLabelStyle}" 
+            <TextBlock Text="Производственные задания" 
                        HorizontalAlignment="Center"/>
         </Border>
 
