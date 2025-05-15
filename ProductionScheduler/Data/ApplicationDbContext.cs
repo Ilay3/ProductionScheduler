@@ -1,6 +1,7 @@
-﻿// File: Data/ApplicationDbContext.cs
+﻿// File: Data/ApplicationDbContext.cs (обновленная версия)
 using Microsoft.EntityFrameworkCore;
 using ProductionScheduler.Models;
+using System;
 
 namespace ProductionScheduler.Data
 {
@@ -10,17 +11,25 @@ namespace ProductionScheduler.Data
         public DbSet<RouteStage> RouteStages { get; set; }
         public DbSet<Machine> Machines { get; set; }
         public DbSet<MachineType> MachineTypes { get; set; }
-        public DbSet<ProductionTask> ProductionTasks { get; set; } 
+        public DbSet<ProductionTask> ProductionTasks { get; set; }
         public DbSet<ProductionTaskStage> ProductionTaskStages { get; set; }
 
-
         public ApplicationDbContext() { }
+
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
             {
-                optionsBuilder.UseSqlite("Data Source=productionscheduler.db");
+                var connectionString = "Data Source=productionscheduler.db";
+                optionsBuilder.UseSqlite(connectionString);
+
+                // Добавляем логирование для диагностики
+#if DEBUG
+                optionsBuilder.LogTo(Console.WriteLine);
+                optionsBuilder.EnableSensitiveDataLogging();
+#endif
             }
         }
 
@@ -28,77 +37,128 @@ namespace ProductionScheduler.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Настройка связей (многие из них EF Core выведет по соглашениям, но можно указать явно)
+            // Настройка связей
+            ConfigureDetailEntity(modelBuilder);
+            ConfigureMachineTypeEntity(modelBuilder);
+            ConfigureMachineEntity(modelBuilder);
+            ConfigureProductionTaskEntity(modelBuilder);
+            ConfigureProductionTaskStageEntity(modelBuilder);
+            ConfigureRouteStageEntity(modelBuilder);
+        }
 
-            modelBuilder.Entity<Detail>()
-                .HasMany(d => d.RouteStages)
-                .WithOne(rs => rs.Detail)
-                .HasForeignKey(rs => rs.DetailId)
-                .OnDelete(DeleteBehavior.Cascade); // При удалении детали удалять ее этапы
+        private void ConfigureDetailEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Detail>(entity =>
+            {
+                entity.HasKey(d => d.Id);
+                entity.Property(d => d.Name).IsRequired().HasMaxLength(200);
+                entity.Property(d => d.Code).IsRequired().HasMaxLength(100);
+                entity.HasIndex(d => d.Code).IsUnique();
 
-            modelBuilder.Entity<MachineType>()
-                .HasMany(mt => mt.Machines)
-                .WithOne(m => m.MachineType)
-                .HasForeignKey(m => m.MachineTypeId)
-                .OnDelete(DeleteBehavior.SetNull); // При удалении типа станка, у станков MachineTypeId станет null (или Restrict, если не разрешать удаление типа, пока есть станки)
-                                                   // Если MachineTypeId в Machine обязательный, то лучше Restrict или кастомная логика.
+                entity.HasMany(d => d.RouteStages)
+                      .WithOne(rs => rs.Detail)
+                      .HasForeignKey(rs => rs.DetailId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+        }
 
-            modelBuilder.Entity<MachineType>()
-                .HasMany(mt => mt.ApplicableRouteStages)
-                .WithOne(rs => rs.ApplicableMachineType)
-                .HasForeignKey(rs => rs.MachineTypeId)
-                .OnDelete(DeleteBehavior.Restrict); // Нельзя удалить тип станка, если он используется в этапах маршрута
+        private void ConfigureMachineTypeEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<MachineType>(entity =>
+            {
+                entity.HasKey(mt => mt.Id);
+                entity.Property(mt => mt.Name).IsRequired().HasMaxLength(100);
+                entity.HasIndex(mt => mt.Name).IsUnique();
 
-            // Уникальный индекс для кода детали
-            modelBuilder.Entity<Detail>()
-                .HasIndex(d => d.Code)
-                .IsUnique();
+                entity.HasMany(mt => mt.Machines)
+                      .WithOne(m => m.MachineType)
+                      .HasForeignKey(m => m.MachineTypeId)
+                      .OnDelete(DeleteBehavior.SetNull);
 
-            // Уникальный индекс для имени станка
-            modelBuilder.Entity<Machine>()
-                .HasIndex(m => m.Name)
-                .IsUnique();
+                entity.HasMany(mt => mt.ApplicableRouteStages)
+                      .WithOne(rs => rs.ApplicableMachineType)
+                      .HasForeignKey(rs => rs.MachineTypeId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+        }
 
-            // Уникальный индекс для имени типа станка
-            modelBuilder.Entity<MachineType>()
-                .HasIndex(mt => mt.Name)
-                .IsUnique();
+        private void ConfigureMachineEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Machine>(entity =>
+            {
+                entity.HasKey(m => m.Id);
+                entity.Property(m => m.Name).IsRequired().HasMaxLength(100);
+                entity.HasIndex(m => m.Name).IsUnique();
 
-            // Конфигурация для ProductionTask
+                // Связь с этапами заданий
+                entity.HasMany(m => m.TaskStages)
+                      .WithOne(pts => pts.AssignedMachine)
+                      .HasForeignKey(pts => pts.MachineId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+        }
+
+        private void ConfigureProductionTaskEntity(ModelBuilder modelBuilder)
+        {
             modelBuilder.Entity<ProductionTask>(entity =>
             {
+                entity.HasKey(pt => pt.Id);
+                entity.Property(pt => pt.Quantity).IsRequired();
+                entity.Property(pt => pt.CreationTime).IsRequired();
+                entity.Property(pt => pt.Status).IsRequired();
+                entity.Property(pt => pt.Notes).IsRequired(false);
+
                 entity.HasOne(pt => pt.Detail)
-                      .WithMany() // У одной детали может быть много заданий
+                      .WithMany()
                       .HasForeignKey(pt => pt.DetailId)
-                      .OnDelete(DeleteBehavior.Restrict); // Не удалять деталь, если есть связанные задания (или Cascade, если нужно)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasMany(pt => pt.TaskStages)
                       .WithOne(pts => pts.ProductionTask)
                       .HasForeignKey(pts => pts.ProductionTaskId)
-                      .OnDelete(DeleteBehavior.Cascade); // При удалении задания удалять его этапы
+                      .OnDelete(DeleteBehavior.Cascade);
             });
+        }
 
-            // Конфигурация для ProductionTaskStage
+        private void ConfigureProductionTaskStageEntity(ModelBuilder modelBuilder)
+        {
             modelBuilder.Entity<ProductionTaskStage>(entity =>
             {
-                entity.HasOne(pts => pts.RouteStage) // Связь с нормативным этапом
-                      .WithMany() // У одного RouteStage может быть много фактических выполнений в разных заданиях
+                entity.HasKey(pts => pts.Id);
+                entity.Property(pts => pts.QuantityToProcess).IsRequired();
+                entity.Property(pts => pts.OrderInTask).IsRequired();
+                entity.Property(pts => pts.Status).IsRequired();
+                entity.Property(pts => pts.StandardTimePerUnitAtExecution).IsRequired();
+                entity.Property(pts => pts.PlannedSetupTime).IsRequired();
+                entity.Property(pts => pts.PlannedDuration).IsRequired();
+
+                entity.HasOne(pts => pts.RouteStage)
+                      .WithMany()
                       .HasForeignKey(pts => pts.RouteStageId)
-                      .OnDelete(DeleteBehavior.Restrict); // Не удалять этап маршрута, если он используется в заданиях
+                      .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasOne(pts => pts.AssignedMachine) // Связь с конкретным станком
-                      .WithMany() // У одного станка может быть много назначенных этапов заданий
+                entity.HasOne(pts => pts.AssignedMachine)
+                      .WithMany()
                       .HasForeignKey(pts => pts.MachineId)
-                      .OnDelete(DeleteBehavior.SetNull); // Если станок удален, у этапа задания MachineId станет null
-                                                         // (возможно, лучше Restrict, если станок не должен удаляться при активных задачах)
+                      .OnDelete(DeleteBehavior.SetNull);
 
-                // Для связи "родитель-потомок" при разделении этапов
                 entity.HasOne(pts => pts.ParentStage)
                       .WithMany(p => p.SubStages)
                       .HasForeignKey(pts => pts.ParentProductionTaskStageId)
-                      .OnDelete(DeleteBehavior.Restrict); // или SetNull, в зависимости от логики
+                      .OnDelete(DeleteBehavior.Restrict);
             });
+        }
 
+        private void ConfigureRouteStageEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<RouteStage>(entity =>
+            {
+                entity.HasKey(rs => rs.Id);
+                entity.Property(rs => rs.OperationNumber).IsRequired().HasMaxLength(50);
+                entity.Property(rs => rs.OperationName).IsRequired().HasMaxLength(200);
+                entity.Property(rs => rs.StandardTimePerUnit).IsRequired();
+                entity.Property(rs => rs.OrderInRoute).IsRequired();
+            });
         }
     }
 }

@@ -12,7 +12,8 @@
             <TextBlock Text="Главное Окно Приложения" FontSize="20" Margin="20"/>
             <Button x:Name="BtnOpenAdminPanel" Content="Открыть Панель Администратора" Width="250" Height="40" Margin="10" Click="BtnOpenAdminPanel_Click"/>
             <Button x:Name="BtnOpenEmployeeForm" Content="Открыть Форму Сотрудника" Width="250" Height="40" Margin="10" Click="BtnOpenEmployeeForm_Click"/>
-
+            <Button x:Name="BtnOpenReports" Content="Отчеты" Width="250" Height="40" Margin="10" Click="BtnOpenReports_Click"/>
         </StackPanel>
+
     </Grid>
 </Window>

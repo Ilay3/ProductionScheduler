@@ -4,8 +4,18 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:ProductionScheduler.ViewModels"
+        xmlns:converters="clr-namespace:ProductionScheduler.Converters"
         mc:Ignorable="d"
-        Title="Рабочая форма сотрудника" Height="600" Width="900" WindowStartupLocation="CenterScreen">
+        Title="Рабочая форма сотрудника" Height="800" Width="1400" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:HoursToMinutesConverter x:Key="HoursToMinutesConverter"/>
+        <SolidColorBrush x:Key="PlannedBrush" Color="LightBlue" />
+        <SolidColorBrush x:Key="InProgressBrush" Color="Orange" />
+        <SolidColorBrush x:Key="CompletedBrush" Color="LightGreen" />
+        <SolidColorBrush x:Key="PausedBrush" Color="Yellow" />
+    </Window.Resources>
     <Window.DataContext>
         <viewmodels:EmployeeWorkViewModel/>
     </Window.DataContext>
@@ -14,45 +24,221 @@
             <RowDefinition Height="Auto"/>
             <!-- Для создания нового задания -->
             <RowDefinition Height="Auto"/>
-            <!-- Разделитель или заголовок для списка -->
+            <!-- Для выбора станков и планирования -->
             <RowDefinition Height="*"/>
-            <!-- Для списка заданий / Ганта -->
+            <!-- Для управления заданиями -->
         </Grid.RowDefinitions>
 
         <!-- Секция создания нового задания -->
         <Border Grid.Row="0" BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Новое задание:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBlock Text="Деталь:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <ComboBox ItemsSource="{Binding AvailableDetails}" 
-                          SelectedItem="{Binding SelectedDetailForNewTask}"
-                          DisplayMemberPath="Name"
-                          Width="200" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Количество:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <TextBox Text="{Binding NewTaskQuantity, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <Button Content="Создать задание" Command="{Binding CreateNewTaskCommand}" Width="120" VerticalAlignment="Center"/>
-                <Button Content="Обновить данные" Command="{Binding RefreshDataCommand}" Width="120" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Первая строка: выбор детали, количество -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Новое задание:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                    <TextBlock Text="Деталь:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox ItemsSource="{Binding AvailableDetails}" 
+                              SelectedItem="{Binding SelectedDetailForNewTask}"
+                              DisplayMemberPath="Name"
+                              Width="200" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Количество:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <TextBox Text="{Binding NewTaskQuantity, UpdateSourceTrigger=PropertyChanged}" 
+                             Width="80" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Плановое начало:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <DatePicker SelectedDate="{Binding PlannedStartTime}" Width="120" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                    <Button Content="Обновить данные" Command="{Binding RefreshDataCommand}" 
+                            Width="120" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Вторая строка: настройки планирования -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <CheckBox IsChecked="{Binding UseAutomaticPlanning}" 
+                              Content="Автоматическое планирование с учетом смен" 
+                              VerticalAlignment="Center" Margin="0,0,20,0"/>
+                    <Button Content="Предложить оптимальное время" 
+                            Command="{Binding SuggestOptimalTimeCommand}" 
+                            Width="200" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Третья строка: плановое время и предупреждения -->
+                <StackPanel Grid.Row="2" Orientation="Horizontal" 
+                            Visibility="{Binding TotalPlannedTime, Converter={StaticResource NullToVisibilityConverter}}">
+                    <TextBlock Text="Общее плановое время:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="{Binding TotalPlannedTime}" VerticalAlignment="Center" Margin="0,0,20,0" FontWeight="Bold" Foreground="Blue"/>
+                    <TextBlock Text="Плановое окончание:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <TextBlock Text="{Binding PlannedEndTime, StringFormat='dd.MM.yy HH:mm'}" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,20,0"/>
+                    <TextBlock Text="{Binding PlanningWarnings}" VerticalAlignment="Center" 
+                               Foreground="Orange" FontWeight="Bold" TextWrapping="Wrap"
+                               Visibility="{Binding PlanningWarnings, Converter={StaticResource NullToVisibilityConverter}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Секция выбора станков для этапов -->
+        <Border Grid.Row="1" BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0,0,0,10"
+                Visibility="{Binding RouteStagesForNewTask, Converter={StaticResource NullToVisibilityConverter}}">
+            <StackPanel>
+                <TextBlock Text="Выбор станков для этапов:" FontWeight="Bold" Margin="0,0,0,10"/>
+                <DataGrid ItemsSource="{Binding RouteStagesForNewTask}" AutoGenerateColumns="False" 
+                          CanUserAddRows="False" CanUserDeleteRows="False" Height="200">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="№ Опер." Binding="{Binding RouteStage.OperationNumber}" Width="70" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Операция" Binding="{Binding RouteStage.OperationName}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Норма (ч)" Binding="{Binding RouteStage.StandardTimePerUnit, StringFormat={}{0:N3}}" Width="80" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="Выбранный станок" Width="160">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding AvailableMachines}"
+                                              SelectedItem="{Binding SelectedMachine, UpdateSourceTrigger=PropertyChanged}"
+                                              DisplayMemberPath="Name"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Переналадка (мин)" 
+                                            Binding="{Binding PlannedSetupTime, Converter={StaticResource HoursToMinutesConverter}, StringFormat={}{0:F0}}" 
+                                            Width="110" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Длительность" Binding="{Binding PlannedDuration, StringFormat='{}{0:hh\\:mm}'}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="План. начало" Binding="{Binding PlannedStartTime, StringFormat='dd.MM HH:mm'}" Width="100" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="План. окончание" Binding="{Binding PlannedEndTime, StringFormat='dd.MM HH:mm'}" Width="110" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Смена" Binding="{Binding ShiftInfo}" Width="140" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Статус" Binding="{Binding SplitInfo}" Width="70" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Button Content="Создать задание" Command="{Binding CreateNewTaskCommand}" 
+                        HorizontalAlignment="Right" Width="120" Margin="0,10,0,0"/>
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="1" Text="Активные производственные задания:" FontWeight="Bold" Margin="0,10,0,5"/>
+        <!-- Основная рабочая область -->
+        <TabControl Grid.Row="2">
+            <!-- Вкладка управления заданиями -->
+            <TabItem Header="Управление заданиями">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-        <!-- Список активных заданий (пока простой DataGrid, позже здесь будет Гант) -->
-        <DataGrid Grid.Row="2" ItemsSource="{Binding ActiveProductionTasks}" AutoGenerateColumns="False" IsReadOnly="True"
-                  CanUserAddRows="False">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
-                <DataGridTextColumn Header="Деталь" Binding="{Binding Detail.Name}" Width="*"/>
-                <DataGridTextColumn Header="Код детали" Binding="{Binding Detail.Code}" Width="120"/>
-                <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="70"/>
-                <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="100"/>
-                <DataGridTextColumn Header="Создано" Binding="{Binding CreationTime, StringFormat='dd.MM.yy HH:mm'}" Width="120"/>
-                <!-- TODO: Добавить столбцы для плановых/фактических дат, если нужно -->
-            </DataGrid.Columns>
-            <!-- TODO: Можно добавить DataGrid.RowDetailsTemplate для отображения этапов выбранного задания -->
-        </DataGrid>
+                    <!-- Список заданий -->
+                    <TextBlock Grid.Row="0" Text="Активные производственные задания:" 
+                               FontWeight="Bold" Margin="0,0,0,5"/>
 
-        <!-- Сюда позже будет добавлена диаграмма Ганта -->
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveProductionTasks}" 
+                              SelectedItem="{Binding SelectedTask}"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
+                            <DataGridTextColumn Header="Деталь" Binding="{Binding Detail.Name}" Width="*"/>
+                            <DataGridTextColumn Header="Код" Binding="{Binding Detail.Code}" Width="120"/>
+                            <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="70"/>
+                            <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="100"/>
+                            <DataGridTextColumn Header="Создано" Binding="{Binding CreationTime, StringFormat='dd.MM.yy HH:mm'}" Width="120"/>
+                            <DataGridTextColumn Header="План. начало" Binding="{Binding PlannedStartTime, StringFormat='dd.MM.yy HH:mm'}" Width="120"/>
+                            <DataGridTextColumn Header="План. окончание" Binding="{Binding PlannedEndTime, StringFormat='dd.MM.yy HH:mm'}" Width="130"/>
+                            <DataGridTextColumn Header="Факт. начало" Binding="{Binding ActualStartTime, StringFormat='dd.MM.yy HH:mm'}" Width="120"/>
+                            <DataGridTextColumn Header="Факт. окончание" Binding="{Binding ActualEndTime, StringFormat='dd.MM.yy HH:mm'}" Width="130"/>
+                        </DataGrid.Columns>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Planned">
+                                        <Setter Property="Background" Value="{StaticResource PlannedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="InProgress">
+                                        <Setter Property="Background" Value="{StaticResource InProgressBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                        <Setter Property="Background" Value="{StaticResource CompletedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Paused">
+                                        <Setter Property="Background" Value="{StaticResource PausedBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                    </DataGrid>
 
+                    <!-- Кнопки управления заданием -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10">
+                        <Button Content="Начать задание" Command="{Binding StartTaskCommand}" Width="120" Margin="0,0,10,0"/>
+                        <Button Content="Приостановить" Command="{Binding PauseTaskCommand}" Width="120" Margin="0,0,10,0"/>
+                        <Button Content="Завершить задание" Command="{Binding CompleteTaskCommand}" Width="120" Margin="0,0,10,0"/>
+                    </StackPanel>
+
+                    <!-- Детали выбранного задания -->
+                    <GroupBox Grid.Row="3" Header="Этапы выбранного задания" Margin="0,10,0,0">
+                        <DataGrid ItemsSource="{Binding SelectedTaskStages}" AutoGenerateColumns="False" 
+                                  IsReadOnly="True" CanUserAddRows="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="№ Опер." Binding="{Binding TaskStage.RouteStage.OperationNumber}" Width="80"/>
+                                <DataGridTextColumn Header="Операция" Binding="{Binding TaskStage.RouteStage.OperationName}" Width="*"/>
+                                <DataGridTextColumn Header="Станок" Binding="{Binding TaskStage.AssignedMachine.Name}" Width="150"/>
+                                <DataGridTextColumn Header="Кол-во" Binding="{Binding TaskStage.QuantityToProcess}" Width="70"/>
+                                <DataGridTextColumn Header="Статус" Binding="{Binding TaskStage.Status}" Width="100"/>
+                                <DataGridTextColumn Header="План. время" Binding="{Binding TaskStage.PlannedDuration, StringFormat='{}{0:hh\\:mm}'}" Width="110"/>
+                                <DataGridTextColumn Header="Факт. время" Binding="{Binding TaskStage.ActualDuration, StringFormat='{}{0:hh\\:mm}'}" Width="110"/>
+                                <DataGridTemplateColumn Header="Действия" Width="360">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Начать" Command="{Binding StartCommand}" Width="60" Margin="2"/>
+                                                <Button Content="Пауза" Command="{Binding PauseCommand}" Width="60" Margin="2"/>
+                                                <Button Content="Завершить" Command="{Binding CompleteCommand}" Width="75" Margin="2"/>
+                                                <Button Content="Разделить" Command="{Binding SplitCommand}" Width="75" Margin="2"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TaskStage.Status}" Value="Planned">
+                                            <Setter Property="Background" Value="{StaticResource PlannedBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TaskStage.Status}" Value="InProgress">
+                                            <Setter Property="Background" Value="{StaticResource InProgressBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TaskStage.Status}" Value="Completed">
+                                            <Setter Property="Background" Value="{StaticResource CompletedBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TaskStage.Status}" Value="Paused">
+                                            <Setter Property="Background" Value="{StaticResource PausedBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- Вкладка диаграммы Ганта (заглушка) -->
+            <TabItem Header="Диаграмма Ганта">
+                <Border BorderBrush="Gray" BorderThickness="1">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Диаграмма Ганта" FontSize="24" FontWeight="Bold" TextAlignment="Center"/>
+                        <TextBlock Text="Будет добавлена после исправления ошибок" FontSize="16" TextAlignment="Center" Margin="0,10"/>
+                        <Border Background="LightGray" Padding="20" Margin="0,20">
+                            <StackPanel>
+                                <TextBlock Text="Планируемый функционал:" FontWeight="Bold" Margin="0,0,0,10"/>
+                                <TextBlock Text="• Визуализация заданий и этапов на временной шкале"/>
+                                <TextBlock Text="• Перетаскивание для изменения планового времени"/>
+                                <TextBlock Text="• Разделение операций на несколько станков"/>
+                                <TextBlock Text="• Отображение загрузки станков"/>
+                                <TextBlock Text="• Учет рабочих смен"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

@@ -1,6 +1,7 @@
 ﻿// File: Models/Machine.cs
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema; // Для ForeignKey
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Collections.Generic;
 
 namespace ProductionScheduler.Models
 {
@@ -10,14 +11,19 @@ namespace ProductionScheduler.Models
 
         [Required]
         [MaxLength(100)]
-        public string Name { get; set; } // Имя/Инвентарный номер станка
+        public string Name { get; set; }
 
-        // Внешний ключ для типа станка
-        public int? MachineTypeId { get; set; } // Nullable, если станок может быть без указания типа (но лучше делать обязательным)
-                                                // Если делаем обязательным: public int MachineTypeId { get; set; }
+        public int? MachineTypeId { get; set; }
 
         [ForeignKey("MachineTypeId")]
         public virtual MachineType MachineType { get; set; }
 
+        // Навигационное свойство для этапов заданий, назначенных на этот станок
+        public virtual ICollection<ProductionTaskStage> TaskStages { get; set; }
+
+        public Machine()
+        {
+            TaskStages = new HashSet<ProductionTaskStage>();
+        }
     }
 }

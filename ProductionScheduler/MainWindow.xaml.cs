@@ -22,5 +22,10 @@ namespace ProductionScheduler
             employeeWindow.Show(); // Или ShowDialog(), если нужно модальное
         }
 
+        private void BtnOpenReports_Click(object sender, RoutedEventArgs e)
+        {
+            ReportsWindow reportsWindow = new ReportsWindow();
+            reportsWindow.ShowDialog();
+        }
     }
 }

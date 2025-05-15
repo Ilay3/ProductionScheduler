@@ -1,6 +1,9 @@
 ﻿// File: App.xaml.cs
 using ProductionScheduler.Data;
 using System.Windows;
+using Microsoft.EntityFrameworkCore;
+using System.IO;
+using System;
 
 namespace ProductionScheduler
 {
@@ -10,18 +13,53 @@ namespace ProductionScheduler
         {
             base.OnStartup(e);
 
-            // Инициализация базы данных
-            using (var dbContext = new ApplicationDbContext())
+            try
             {
-                // Этот метод создаст базу данных и схему, если они еще не существуют.
-                // Он не использует миграции, поэтому если вы измените модели позже,
-                // вам, возможно, придется удалить файл БД или использовать миграции.
-                dbContext.Database.EnsureCreated();
-            }
+                // Путь к файлу базы данных
+                string dbPath = "productionscheduler.db";
 
-            // Можно здесь же открыть главное окно или окно администратора
-            // MainWindow mainWindow = new MainWindow(); // Пока оставим стандартное
-            // mainWindow.Show();
+                // УДАЛЯЕМ СТАРУЮ БАЗУ ПОЛНОСТЬЮ (если существует)
+                if (File.Exists(dbPath))
+                {
+                    File.Delete(dbPath);
+                    System.Threading.Thread.Sleep(100); // Даем время на удаление файла
+                }
+
+                System.Diagnostics.Debug.WriteLine("Database file deleted, creating new one...");
+
+                // Инициализация базы данных
+                using (var dbContext = new ApplicationDbContext())
+                {
+                    // Простое создание базы данных без миграций
+                    bool created = dbContext.Database.EnsureCreated();
+                    System.Diagnostics.Debug.WriteLine($"Database created: {created}");
+
+                    // Проверяем подключение
+                    bool canConnect = dbContext.Database.CanConnect();
+                    System.Diagnostics.Debug.WriteLine($"Can connect: {canConnect}");
+
+                    if (!canConnect)
+                    {
+                        throw new Exception("Cannot connect to database after creation");
+                    }
+
+                    // Добавляем тестовые данные
+                    TestDataSeeder.SeedTestData(dbContext);
+                    System.Diagnostics.Debug.WriteLine("Test data seeded");
+                }
+
+                MessageBox.Show("База данных успешно создана и заполнена тестовыми данными!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Database initialization error: {ex}");
+                MessageBox.Show($"Ошибка инициализации базы данных: {ex.Message}\n\nДетали: {ex.InnerException?.Message}",
+                    "Критическая ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+
+                // Не завершаем приложение, даем пользователю шанс
+                // this.Shutdown();
+                // return;
+            }
         }
     }
 }
