@@ -1,10 +1,12 @@
-﻿<Window x:Class="ProductionScheduler.Views.EmployeeWindow"
+﻿<!-- File: Views/EmployeeWindow.xaml (версия с интегрированной диаграммой Ганта) -->
+<Window x:Class="ProductionScheduler.Views.EmployeeWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:ProductionScheduler.ViewModels"
         xmlns:converters="clr-namespace:ProductionScheduler.Converters"
+        xmlns:controls="clr-namespace:ProductionScheduler.Views.Controls"
         mc:Ignorable="d"
         Title="Рабочая форма сотрудника" Height="800" Width="1400" WindowStartupLocation="CenterScreen">
     <Window.Resources>
@@ -220,24 +222,39 @@
                 </Grid>
             </TabItem>
 
-            <!-- Вкладка диаграммы Ганта (заглушка) -->
+            <!-- Вкладка диаграммы Ганта -->
             <TabItem Header="Диаграмма Ганта">
-                <Border BorderBrush="Gray" BorderThickness="1">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="Диаграмма Ганта" FontSize="24" FontWeight="Bold" TextAlignment="Center"/>
-                        <TextBlock Text="Будет добавлена после исправления ошибок" FontSize="16" TextAlignment="Center" Margin="0,10"/>
-                        <Border Background="LightGray" Padding="20" Margin="0,20">
-                            <StackPanel>
-                                <TextBlock Text="Планируемый функционал:" FontWeight="Bold" Margin="0,0,0,10"/>
-                                <TextBlock Text="• Визуализация заданий и этапов на временной шкале"/>
-                                <TextBlock Text="• Перетаскивание для изменения планового времени"/>
-                                <TextBlock Text="• Разделение операций на несколько станков"/>
-                                <TextBlock Text="• Отображение загрузки станков"/>
-                                <TextBlock Text="• Учет рабочих смен"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Border>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Панель управления диаграммой -->
+                    <Border Grid.Row="0" Background="LightGray" Padding="5" Margin="0,0,0,5">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Управление диаграммой:" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
+                            <Button Content="Обновить" Command="{Binding RefreshDataCommand}" Width="80" Margin="5"/>
+                            <Button Content="Увеличить" Click="ZoomIn_Click" Width="80" Margin="5"/>
+                            <Button Content="Уменьшить" Click="ZoomOut_Click" Width="80" Margin="5"/>
+                            <CheckBox x:Name="ShowCurrentTimeCheckBox" Content="Показать текущее время" 
+                                      IsChecked="True" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                            <ComboBox x:Name="TimeScaleComboBox" Width="100" Margin="20,0,0,0" SelectedIndex="1">
+                                <ComboBoxItem Content="Минуты"/>
+                                <ComboBoxItem Content="Часы"/>
+                                <ComboBoxItem Content="Дни"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Диаграмма Ганта -->
+                    <controls:GanttChart Grid.Row="1" x:Name="ProductionGanttChart"
+                                         Tasks="{Binding ActiveProductionTasks}"
+                                         ShowCurrentTimeLine="{Binding ElementName=ShowCurrentTimeCheckBox, Path=IsChecked}"
+                                         TaskClicked="GanttChart_TaskClicked"
+                                         TaskDoubleClicked="GanttChart_TaskDoubleClicked"
+                                         TaskContextMenuOpening="GanttChart_TaskContextMenuOpening"/>
+                </Grid>
             </TabItem>
         </TabControl>
     </Grid>

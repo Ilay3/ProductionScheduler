@@ -1,4 +1,4 @@
-﻿// File: ViewModels/EmployeeWorkViewModel.cs (с планировщиком)
+﻿// File: ViewModels/EmployeeWorkViewModel.cs (исправленная версия)
 using ProductionScheduler.Data;
 using ProductionScheduler.Models;
 using ProductionScheduler.Services;
@@ -35,11 +35,12 @@ namespace ProductionScheduler.ViewModels
                 {
                     LoadRouteStagesForNewTask();
                     UpdatePlannedTimes();
+                    ((RelayCommand)CreateNewTaskCommand).RaiseCanExecuteChanged();
                 }
             }
         }
 
-        private int _newTaskQuantity;
+        private int _newTaskQuantity = 1;
         public int NewTaskQuantity
         {
             get => _newTaskQuantity;
@@ -48,6 +49,7 @@ namespace ProductionScheduler.ViewModels
                 if (SetProperty(ref _newTaskQuantity, value))
                 {
                     UpdatePlannedTimes();
+                    ((RelayCommand)CreateNewTaskCommand).RaiseCanExecuteChanged();
                 }
             }
         }
@@ -87,7 +89,7 @@ namespace ProductionScheduler.ViewModels
             set => SetProperty(ref _plannedEndTime, value);
         }
 
-        private bool _useAutomaticPlanning;
+        private bool _useAutomaticPlanning = true;
         public bool UseAutomaticPlanning
         {
             get => _useAutomaticPlanning;
@@ -126,6 +128,9 @@ namespace ProductionScheduler.ViewModels
                 if (SetProperty(ref _selectedTask, value))
                 {
                     LoadTaskStagesDetails();
+                    ((RelayCommand)StartTaskCommand).RaiseCanExecuteChanged();
+                    ((RelayCommand)PauseTaskCommand).RaiseCanExecuteChanged();
+                    ((RelayCommand)CompleteTaskCommand).RaiseCanExecuteChanged();
                 }
             }
         }
@@ -178,9 +183,7 @@ namespace ProductionScheduler.ViewModels
                 RouteStagesForNewTask = new ObservableCollection<RouteStageWithMachine>();
                 SelectedTaskStages = new ObservableCollection<ProductionTaskStageViewModel>();
 
-                NewTaskQuantity = 1;
                 PlannedStartTime = DateTime.Now;
-                UseAutomaticPlanning = true;
 
                 // Загружаем данные
                 if (_context.Database.CanConnect())
@@ -193,7 +196,7 @@ namespace ProductionScheduler.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"EmployeeWorkViewModel Constructor Error: {ex.Message}");
-                throw;
+                MessageBox.Show($"Ошибка инициализации: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -211,6 +214,7 @@ namespace ProductionScheduler.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"LoadAllData Error: {ex.Message}");
+                MessageBox.Show($"Ошибка загрузки данных: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -276,6 +280,7 @@ namespace ProductionScheduler.ViewModels
                         if (e.PropertyName == nameof(RouteStageWithMachine.SelectedMachine))
                         {
                             UpdatePlannedTimes();
+                            ((RelayCommand)CreateNewTaskCommand).RaiseCanExecuteChanged();
                         }
                     };
 
@@ -776,7 +781,7 @@ namespace ProductionScheduler.ViewModels
             }
         }
 
-        private void ExecuteStartStage(ProductionTaskStageViewModel stageVM)
+        public void ExecuteStartStage(ProductionTaskStageViewModel stageVM)
         {
             if (stageVM?.TaskStage == null) return;
 
@@ -794,7 +799,7 @@ namespace ProductionScheduler.ViewModels
             }
         }
 
-        private void ExecutePauseStage(ProductionTaskStageViewModel stageVM)
+        public void ExecutePauseStage(ProductionTaskStageViewModel stageVM)
         {
             if (stageVM?.TaskStage == null) return;
 
@@ -811,7 +816,7 @@ namespace ProductionScheduler.ViewModels
             }
         }
 
-        private void ExecuteCompleteStage(ProductionTaskStageViewModel stageVM)
+        public void ExecuteCompleteStage(ProductionTaskStageViewModel stageVM)
         {
             if (stageVM?.TaskStage == null) return;
 
@@ -835,7 +840,7 @@ namespace ProductionScheduler.ViewModels
             }
         }
 
-        private void ExecuteSplitStage(ProductionTaskStageViewModel stageVM)
+        public void ExecuteSplitStage(ProductionTaskStageViewModel stageVM)
         {
             if (stageVM?.TaskStage == null) return;
 
@@ -877,7 +882,7 @@ namespace ProductionScheduler.ViewModels
         }
     }
 
-    // Вспомогательные классы
+    // Вспомогательные классы остаются прежними...
     public class RouteStageWithMachine : ViewModelBase
     {
         public RouteStage RouteStage { get; set; }
@@ -925,13 +930,13 @@ namespace ProductionScheduler.ViewModels
             TaskStage = taskStage;
             _parentViewModel = parentViewModel;
 
-            StartCommand = new RelayCommand(() => _parentViewModel.StartStageCommand.Execute(this),
+            StartCommand = new RelayCommand(() => _parentViewModel.ExecuteStartStage(this),
                                           () => TaskStage.Status == TaskStatus.Planned);
-            PauseCommand = new RelayCommand(() => _parentViewModel.PauseStageCommand.Execute(this),
+            PauseCommand = new RelayCommand(() => _parentViewModel.ExecutePauseStage(this),
                                           () => TaskStage.Status == TaskStatus.InProgress);
-            CompleteCommand = new RelayCommand(() => _parentViewModel.CompleteStageCommand.Execute(this),
+            CompleteCommand = new RelayCommand(() => _parentViewModel.ExecuteCompleteStage(this),
                                              () => TaskStage.Status == TaskStatus.InProgress);
-            SplitCommand = new RelayCommand(() => _parentViewModel.SplitStageCommand.Execute(this),
+            SplitCommand = new RelayCommand(() => _parentViewModel.ExecuteSplitStage(this),
                                           () => TaskStage.Status == TaskStatus.Planned && !TaskStage.ParentProductionTaskStageId.HasValue);
         }
 
