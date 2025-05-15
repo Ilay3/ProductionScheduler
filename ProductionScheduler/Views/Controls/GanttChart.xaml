@@ -1,52 +1,164 @@
-﻿ <UserControl x:Class="ProductionScheduler.Views.Controls.GanttChart"
+﻿<!-- File: Views/Controls/GanttChart.xaml (улучшенная версия) -->
+<UserControl x:Class="ProductionScheduler.Views.Controls.GanttChart"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+        <!-- Стили для элементов диаграммы -->
+        <Style x:Key="TaskBarStyle" TargetType="Border">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#333"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Height" Value="25"/>
+            <Setter Property="Margin" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.8"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="GridLineStyle" TargetType="Line">
+            <Setter Property="Stroke" Value="#E0E0E0"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="MajorGridLineStyle" TargetType="Line">
+            <Setter Property="Stroke" Value="#CCCCCC"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="TimeAxisStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="TaskLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="5,0"/>
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-            <Grid Name="MainGrid">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <!-- Заголовки временной шкалы -->
-                    <RowDefinition Height="*"/>
-                    <!-- Основная область диаграммы -->
-                </Grid.RowDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
+            <!-- Временная шкала -->
+            <RowDefinition Height="*"/>
+            <!-- Основная область -->
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <!-- Область с именами заданий -->
+            <ColumnDefinition Width="*"/>
+            <!-- Область диаграммы -->
+        </Grid.ColumnDefinitions>
 
-                <!-- Временная шкала -->
-                <Border Grid.Row="0" Background="LightGray" BorderBrush="Gray" BorderThickness="1" Height="60">
-                    <Canvas Name="TimeScaleCanvas">
-                        <!-- Временные метки будут добавлены программно -->
-                    </Canvas>
-                </Border>
+        <!-- Заголовок колонки заданий -->
+        <Border Grid.Row="0" Grid.Column="0" Background="#F5F5F5" BorderBrush="#DDD" BorderThickness="0,0,1,1">
+            <TextBlock Text="Производственные задания" Style="{StaticResource TaskLabelStyle}" 
+                       HorizontalAlignment="Center"/>
+        </Border>
 
-                <!-- Основная область Ганта -->
-                <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1">
-                    <ItemsControl Name="TasksItemsControl">
+        <!-- Временная шкала -->
+        <Border Grid.Row="0" Grid.Column="1" Background="#F5F5F5" BorderBrush="#DDD" BorderThickness="0,0,0,1">
+            <ScrollViewer x:Name="TimeAxisScrollViewer" HorizontalScrollBarVisibility="Hidden" 
+                          VerticalScrollBarVisibility="Disabled">
+                <Canvas x:Name="TimeAxisCanvas" Height="50">
+                    <!-- Временные метки будут добавлены в коде -->
+                </Canvas>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Область с именами заданий -->
+        <Border Grid.Row="1" Grid.Column="0" Background="White" BorderBrush="#DDD" BorderThickness="0,0,1,0">
+            <ScrollViewer x:Name="TaskLabelsScrollViewer" VerticalScrollBarVisibility="Hidden" 
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="TaskLabelsItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Height="40" BorderBrush="#EEE" BorderThickness="0,0,0,1">
+                                <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="5">
+                                    <TextBlock Text="{Binding TaskName}" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Text="{Binding DetailInfo}" FontSize="9" Foreground="#666"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Основная область диаграммы Ганта -->
+        <Border Grid.Row="1" Grid.Column="1" Background="White" BorderBrush="#DDD" BorderThickness="0">
+            <ScrollViewer x:Name="MainScrollViewer" 
+                          HorizontalScrollBarVisibility="Auto" 
+                          VerticalScrollBarVisibility="Auto"
+                          ScrollChanged="MainScrollViewer_ScrollChanged">
+                <Grid>
+                    <!-- Фоновые линии сетки -->
+                    <Canvas x:Name="GridLinesCanvas"/>
+
+                    <!-- Элементы диаграммы (задания и этапы) -->
+                    <ItemsControl x:Name="GanttItemsControl">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <Canvas Background="White"/>
+                                <Canvas Background="Transparent"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding XPosition}"/>
+                                <Setter Property="Canvas.Top" Value="{Binding YPosition}"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <!-- Каждое задание будет представлено как прямоугольник -->
-                                <Border Background="{Binding StatusBrush}" 
-                                        BorderBrush="Black" BorderThickness="1"
-                                        Width="{Binding BarWidth}" Height="30"
-                                        Canvas.Left="{Binding XPosition}" Canvas.Top="{Binding YPosition}"
-                                        ToolTip="{Binding ToolTipText}">
+                                <Border Style="{StaticResource TaskBarStyle}"
+                                        Width="{Binding BarWidth}"
+                                        Background="{Binding StatusBrush}"
+                                        ToolTip="{Binding ToolTipText}"
+                                        MouseLeftButtonDown="TaskBar_MouseLeftButtonDown"
+                                        MouseRightButtonDown="TaskBar_MouseRightButtonDown">
                                     <TextBlock Text="{Binding DisplayText}" 
-                                               VerticalAlignment="Center" HorizontalAlignment="Center"
-                                               FontSize="10" Foreground="Black"/>
+                                               FontSize="10" FontWeight="Bold"
+                                               Foreground="{Binding TextBrush}"
+                                               VerticalAlignment="Center" HorizontalAlignment="Left"
+                                               Margin="5,0" TextTrimming="CharacterEllipsis"/>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </Border>
-            </Grid>
-        </ScrollViewer>
+
+                    <!-- Вертикальная линия текущего времени -->
+                    <Line x:Name="CurrentTimeLine" 
+                          Y1="0" Y2="{Binding ElementName=GanttItemsControl, Path=ActualHeight}"
+                          Stroke="Red" StrokeThickness="2" 
+                          Visibility="Visible"/>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Контекстное меню для заданий -->
+        <Grid.ContextMenu>
+            <ContextMenu x:Name="TaskContextMenu">
+                <MenuItem Header="Начать задание" Click="StartTask_Click"/>
+                <MenuItem Header="Приостановить" Click="PauseTask_Click"/>
+                <MenuItem Header="Завершить" Click="CompleteTask_Click"/>
+                <Separator/>
+                <MenuItem Header="Разделить операцию" Click="SplitOperation_Click"/>
+                <MenuItem Header="Изменить время" Click="ChangeTime_Click"/>
+                <Separator/>
+                <MenuItem Header="Показать детали" Click="ShowDetails_Click"/>
+            </ContextMenu>
+        </Grid.ContextMenu>
     </Grid>
 </UserControl>
